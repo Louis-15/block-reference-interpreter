@@ -8,6 +8,10 @@
  * 输出格式刻意做成显式标记而不是 Markdown 引用块：
  * AI 读 Markdown 时会把 `>` 当成引用语义，反而模糊了「这是展开内容」这件事。
  * 用 `── ... ──` 这种分隔线，模型和人都能一眼看出边界。
+ *
+ * **必须支持预算**：一篇笔记可能有几十处引用，全部展开能到 30 KB 以上，
+ * 超过模型单次工具结果的承受范围，会被宿主截断成一团乱码。
+ * 与其让宿主硬切，不如自己按预算停手，并明确告知「还有哪些没展开」。
  */
 
 import type { ReferenceHit } from './types';
@@ -28,20 +32,37 @@ export interface ExpandNoteOptions {
 	includeHeader?: boolean;
 	/** 头部说明里的文件名（用于让人知道这是哪篇笔记的展开版）。 */
 	fileName?: string;
+	/**
+	 * 输出字符预算（可选）。
+	 *
+	 * 达到预算后停止展开后续引用，剩余引用记入 `skipped`。
+	 * 不传则全部展开（供「人看」的场景使用）。
+	 */
+	maxChars?: number;
 }
 
-/** 生成展开标记的开始行。 */
+/** 展开结果。 */
+export interface ExpandNoteResult {
+	/** 最终文本。 */
+	text: string;
+	/** 成功展开的引用数。 */
+	expandedCount: number;
+	/** 因预算未展开的引用（行号 0-based）。 */
+	skipped: Array<{ uuid: string; line: number }>;
+}
+
+/** 生成展开标记。 */
 function expandStartMarker(uuid: string): string {
 	return `── 块引用 ((${uuid})) 展开 ──`;
 }
 
-/** 生成展开标记的结束行。 */
+/** 生成展开结束标记。 */
 function expandEndMarker(): string {
 	return '── 展开结束 ──';
 }
 
 /**
- * 把所有块引用就地展开。
+ * 把所有块引用就地展开，并遵守字符预算。
  *
  * 处理策略：
  * - 引用所在的原始行原样保留（不篡改笔记正文，UUID 仍可追溯）；
@@ -50,7 +71,10 @@ function expandEndMarker(): string {
  * - 已在扫描阶段排除的假阳性（代码块、行内代码、frontmatter）不会出现在 references 里，
  *   因此代码示例不会被破坏。
  */
-export function buildExpandedNote(input: ExpandNoteInput, options: ExpandNoteOptions): string {
+export function buildExpandedNoteWithBudget(
+	input: ExpandNoteInput,
+	options: ExpandNoteOptions,
+): ExpandNoteResult {
 	const hitsByLine = new Map<number, ReferenceHit[]>();
 	for (const hit of input.references) {
 		const existing = hitsByLine.get(hit.line);
@@ -62,23 +86,58 @@ export function buildExpandedNote(input: ExpandNoteInput, options: ExpandNoteOpt
 	}
 
 	const out: string[] = [];
+	/** 已输出内容累计的字符数，用于预算判定。 */
+	let usedChars = 0;
+	let expandedCount = 0;
+	/** 原文被预算截断的位置（0-based 行号）；未截断时为 -1。 */
+	let sourceTruncatedAt = -1;
+	const skipped: Array<{ uuid: string; line: number }> = [];
+
+	/** 追加一行并累计长度。 */
+	const push = (line: string): void => {
+		out.push(line);
+		usedChars += line.length + 1; // +1 约等于换行符
+	};
 
 	if (options.includeHeader) {
 		const name = options.fileName ?? '当前笔记';
 		// 刻意不用 `>` 引用块：AI 会把引用块当成「被引用的他人内容」，
 		// 而这里是本文档自身的说明，用普通段落语义更准。
-		out.push(
-			`<!-- 本文件由「块引用解释器」生成：${name} 的 AI 可读版 -->`,
-			'',
+		push(`<!-- 本文件由「块引用解释器」生成：${name} 的 AI 可读版 -->`);
+		push('');
+		push(
 			`**说明**：原文中的 \`((uuid))\` 块引用已在下方就地展开，原文行保持不变。全文共 ${input.references.length} 处块引用。`,
-			'',
-			'---',
-			'',
 		);
+		push('');
+		push('---');
+		push('');
 	}
 
 	for (let lineNumber = 0; lineNumber < input.lines.length; lineNumber++) {
-		out.push(input.lines[lineNumber] ?? '');
+		const sourceLine = input.lines[lineNumber] ?? '';
+
+		/**
+		 * 原文行也受预算约束。
+		 *
+		 * 一篇长笔记原文本身就可能有两万字符以上（实测有 760 行的笔记），
+		 * 如果无条件全部输出，预算就只能约束「展开内容」，
+		 * 最终总长度依然会大幅超标、被宿主硬切成半截。
+		 * 这里宁可截断原文并明确告知，也不给出一个看似完整实则被切碎的结果。
+		 */
+		if (options.maxChars !== undefined && usedChars + sourceLine.length > options.maxChars) {
+			sourceTruncatedAt = lineNumber;
+			// 之前尚未展开的引用全部记为跳过，便于调用方知道还剩什么。
+			for (let rest = lineNumber; rest < input.lines.length; rest++) {
+				for (const hit of hitsByLine.get(rest) ?? []) {
+					if (!skipped.some((entry) => entry.uuid === hit.uuid && entry.line === hit.line)) {
+						skipped.push({ uuid: hit.uuid, line: hit.line });
+					}
+				}
+			}
+			break;
+		}
+
+		push(sourceLine);
 
 		const hits = hitsByLine.get(lineNumber);
 		if (!hits || hits.length === 0) {
@@ -93,14 +152,73 @@ export function buildExpandedNote(input: ExpandNoteInput, options: ExpandNoteOpt
 			}
 			expanded.add(hit.uuid);
 
+			// 预算检查放在解析之前：解析本身可能很贵，且超预算后没必要再算。
+			if (options.maxChars !== undefined && usedChars >= options.maxChars && expandedCount > 0) {
+				skipped.push({ uuid: hit.uuid, line: hit.line });
+				continue;
+			}
+
 			const content = options.resolve(hit.uuid);
 			if (!content) {
 				continue;
 			}
 
-			out.push('', expandStartMarker(hit.uuid), content, expandEndMarker(), '');
+			/**
+			 * 展开后二次检查。
+			 *
+			 * 单块可能就有几千字符，只按「解析前」判断会漏掉「加进去就超」的情况，
+			 * 导致最终输出超出预算、被宿主硬切成半截。
+			 *
+			 * 但 `expandedCount === 0` 时允许破例：至少让模型看到一个块的完整内容，
+			 * 而不是拿到一份只有原文、毫无展开的空壳。
+			 */
+			if (
+				options.maxChars !== undefined &&
+				expandedCount > 0 &&
+				usedChars + content.length > options.maxChars
+			) {
+				skipped.push({ uuid: hit.uuid, line: hit.line });
+				continue;
+			}
+
+			push('');
+			push(expandStartMarker(hit.uuid));
+			push(content);
+			push(expandEndMarker());
+			push('');
+			expandedCount++;
 		}
 	}
 
-	return out.join('\n');
+	// 有未展开项时，必须明确交代，否则模型会以为「这篇笔记就这么多内容」。
+	if (skipped.length > 0) {
+		// 只列前 10 个行号：几十个行号连成一串会白白吃掉几百字符的预算。
+		const previewCount = 10;
+		const shownLines = skipped.slice(0, previewCount).map((entry) => entry.line + 1).join('、');
+		const moreSuffix = skipped.length > previewCount ? ` 等共 ${skipped.length} 处` : '';
+
+		push('---');
+		push('');
+		push(`**⚠ 输出已达字符预算上限，以下块引用未展开**（行号：${shownLines}${moreSuffix}）。`);
+		push('如需这些内容，请用 `blockRef` 工具按 UUID 单独读取，或先用 `mode:list` 查看完整清单。');
+		push('');
+	}
+
+	// 原文被截断时同样要说明，否则调用方会误以为笔记只有这么长。
+	if (sourceTruncatedAt >= 0) {
+		push(`**⚠ 原文也在第 ${sourceTruncatedAt + 1} 行处被截断**（超出输出预算）。`);
+		push('若需要完整原文，请用 `mode:list` 只看引用清单，再用 `blockRef` 读取具体块。');
+		push('');
+	}
+
+	return { text: out.join('\n'), expandedCount, skipped };
+}
+
+/**
+ * 兼容封装：只要文本、不限预算。
+ *
+ * 供「人看」的命令使用（输出到只读标签页，不受模型上下文限制）。
+ */
+export function buildExpandedNote(input: ExpandNoteInput, options: ExpandNoteOptions): string {
+	return buildExpandedNoteWithBudget(input, options).text;
 }

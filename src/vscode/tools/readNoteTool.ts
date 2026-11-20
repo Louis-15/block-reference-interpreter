@@ -11,7 +11,7 @@
 import * as vscode from 'vscode';
 
 import { parseMarkdown } from '../../core/blockParser';
-import { buildExpandedNote } from '../../core/expandNote';
+import { buildExpandedNoteWithBudget } from '../../core/expandNote';
 import type { GraphIndex } from '../../core/graphIndex';
 import { resolveBlock } from '../../core/resolve';
 import { readFileText, readConfig } from '../indexService';
@@ -33,6 +33,15 @@ export interface ReadNoteInput {
 	/** 嵌套引用展开深度；不传则用配置值。 */
 	maxDepth?: number;
 }
+
+/**
+ * 最终兜底截断时的额外余量。
+ *
+ * 内部预算已经把总量控制在 `maxOutputChars` 附近，但尾部那段
+ * 「以下 N 处未展开」的提示必须保住——它一旦被切掉，
+ * 模型就会误以为拿到的是完整内容，进而给出片面结论。
+ */
+const tailReserveMargin = 600;
 
 /** 引用清单里一项的可读描述。 */
 function describeReference(index: GraphIndex, uuid: string): string {
@@ -89,17 +98,27 @@ export class ReadNoteTool implements vscode.LanguageModelTool<ReadNoteInput> {
 
 		const parsed = parseMarkdown(absolutePath, content);
 		const displayPath = toDisplayPath(absolutePath, graphRoot);
-		const header = [
+		const referenceCount = parsed.references.length;
+
+		/**
+		 * 引用多时自动附带清单。
+		 *
+		 * 理由：模型只看展开内容时，无法知道「还有哪些引用没展开」。
+		 * 清单很短（每行几十字符），不会挤占多少预算，
+		 * 却能让模型在需要时精准地再调 `blockRef`。
+		 */
+		const autoListThreshold = 8;
+		const shouldList =
+			mode === 'list' || mode === 'both' || (mode === 'expand' && referenceCount > autoListThreshold);
+
+		const parts: string[] = [
 			`# 笔记：${displayPath}`,
-			`原文 ${parsed.lines.length} 行，共 ${parsed.references.length} 处块引用。`,
-		].join('\n');
+			`原文 ${parsed.lines.length} 行，共 ${referenceCount} 处块引用。`,
+		];
 
-		const parts: string[] = [header];
-
-		if (mode === 'list' || mode === 'both') {
+		if (shouldList) {
 			const listLines = parsed.references.map(
-				(hit) =>
-					`- 第 ${hit.line + 1} 行 \`${hit.uuid}\` ${describeReference(index, hit.uuid)}`,
+				(hit) => `- 第 ${hit.line + 1} 行 \`${hit.uuid}\` ${describeReference(index, hit.uuid)}`,
 			);
 			parts.push(
 				listLines.length > 0
@@ -108,26 +127,52 @@ export class ReadNoteTool implements vscode.LanguageModelTool<ReadNoteInput> {
 			);
 		}
 
+		let expandedInfo = '';
 		if (mode === 'expand' || mode === 'both') {
-			const expanded = buildExpandedNote(
+			/**
+			 * 预算要扣掉三部分：
+			 * - 清单与头部已占用的字符
+			 * - 尾部「未展开」提示的预留（否则最终兜底截断会把提示切掉，
+			 *   模型就不知道内容是不完整的）
+			 */
+			const usedByHead = parts.join('\n\n').length + 200;
+			const tailReserve = 600;
+			const remainingBudget = Math.max(config.maxOutputChars - usedByHead - tailReserve, 2000);
+
+			const result = buildExpandedNoteWithBudget(
 				{ lines: parsed.lines, references: parsed.references },
 				{
 					includeHeader: false,
 					fileName: displayPath,
+					maxChars: remainingBudget,
 					resolve: (uuid) =>
 						resolveBlock(index, uuid, {
 							includeChildren: input.includeChildren ?? true,
 							maxDepth: input.maxDepth ?? config.maxDepth,
-							maxChars: config.maxOutputChars,
+							// 单个块也给个上限，避免一篇笔记里有一个超大块就把预算吃光。
+							maxChars: Math.min(remainingBudget, 8000),
 							hideProperties: config.hideProperties,
 						}).text,
 				},
 			);
-			parts.push(`## 展开内容\n\n${expanded}`);
+
+			parts.push(`## 展开内容\n\n${result.text}`);
+
+			if (result.skipped.length > 0) {
+				expandedInfo =
+					`本次展开 ${result.expandedCount} 处，另有 ${result.skipped.length} 处因输出预算未展开。` +
+					`完整清单见上方「块引用清单」，需要时用 blockRef 按 UUID 单独读取。`;
+			} else {
+				expandedInfo = `本次已展开全部 ${result.expandedCount} 处引用。`;
+			}
 		}
 
-		// 整篇展开可能很长，最后再兜一层总长限制。
-		return textResult(truncate(parts.join('\n\n'), config.maxOutputChars * 2));
+		if (expandedInfo) {
+			parts.splice(2, 0, expandedInfo);
+		}
+
+		// 最终兜底：即使内部预算已控制，仍防一手极端情况（如单个块异常巨大）。
+		return textResult(truncate(parts.join('\n\n'), config.maxOutputChars + tailReserveMargin));
 	}
 
 	/** 读文件内容：编辑器有未保存修改时用编辑器内容。 */

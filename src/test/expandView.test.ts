@@ -63,14 +63,16 @@ describe('buildBlockExpandView', () => {
 			throw new Error('期望第一个元素是块');
 		}
 
-		const joined = first.block.lines.join('\n');
+		const joined = first.block.lines.map((line) => line.text).join('\n');
 		expect(joined).toContain('天然');
 		expect(joined).toContain('元气');
 		// 标题不重复出现在内容里
 		expect(joined).not.toContain('《星落凝成糖》夜昙（黑化前）');
+		// 内容行只保留正文，不带 Markdown 的减号标记
+		expect(joined).not.toContain('- ');
 	});
 
-	it('保留子块的缩进', async () => {
+	it('结构化出层级与列表项标记', async () => {
 		const index = await fixture();
 		const view = buildBlockExpandView(index, UUID);
 		const first = view.flow[0];
@@ -78,9 +80,24 @@ describe('buildBlockExpandView', () => {
 			throw new Error('期望第一个元素是块');
 		}
 
-		const line = first.block.lines.find((text) => text.includes('天然'));
+		for (const line of first.block.lines) {
+			expect(line.isListItem).toBe(true);
+			expect(line.depth).toBeGreaterThanOrEqual(1);
+			expect(line.text).not.toMatch(/^[-\s]/);
+		}
+	});
+
+	it('保留子块的缩进层级', async () => {
+		const index = await fixture();
+		const view = buildBlockExpandView(index, UUID);
+		const first = view.flow[0];
+		if (first?.type !== 'block') {
+			throw new Error('期望第一个元素是块');
+		}
+
+		const line = first.block.lines.find((entry) => entry.text.includes('天然'));
 		expect(line).toBeDefined();
-		expect(line?.startsWith(' ')).toBe(true);
+		expect(line?.depth).toBe(1);
 	});
 
 	it('块不存在时给出警告且没有来源', async () => {

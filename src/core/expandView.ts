@@ -27,6 +27,20 @@ export interface ExpandLocation {
 	displayPath: string;
 }
 
+/** 展开内容里的一行。 */
+export interface ExpandContentLine {
+	/**
+	 * 相对块标题的缩进层级。
+	 *
+	 * 0 = 块自身的续行（与标题同层），1 = 直接子块，2 = 孙块……
+	 */
+	depth: number;
+	/** 是否为列表项；false 表示块的续行正文。 */
+	isListItem: boolean;
+	/** 正文（已去掉 `- ` 标记与前导空白）。 */
+	text: string;
+}
+
 /** 一个被展开的块。 */
 export interface ExpandBlock {
 	/** 块 UUID。 */
@@ -39,8 +53,8 @@ export interface ExpandBlock {
 	lineRange?: string;
 	/** 规模说明，例如 `6 行 / 88 字符`。 */
 	size?: string;
-	/** 内容行（已渲染、保留缩进）。 */
-	lines: string[];
+	/** 内容行（结构化的，便于网页按层级画成灰点列表）。 */
+	lines: ExpandContentLine[];
 	/** 警告（块不存在 / 重复定义 / 循环引用 / 被截断）。 */
 	warnings: string[];
 	/** 嵌套层级，0 表示直接引用的块。 */
@@ -107,6 +121,39 @@ function toLines(text: string): string[] {
 		lines.pop();
 	}
 	return lines;
+}
+
+/**
+ * 把块树的渲染行解析成带层级的内容行。
+ *
+ * `renderBlockTree` 用「2 空格 × 层级 + `- `」表示列表项，块自身的续行只有缩进。
+ * 网页那边要按层级画成灰点列表，因此这里先把结构信息提出来，
+ * 而不是把带 `-` 的原始文本直接塞进 `<pre>`。
+ *
+ * 注意：制表符按 4 列展开后再算层级，否则 tab 缩进的块层级会算错。
+ */
+function parseContentLines(rendered: string[]): ExpandContentLine[] {
+	const out: ExpandContentLine[] = [];
+
+	for (const raw of rendered) {
+		if (raw.trim() === '') {
+			// 块内部的空行没有结构意义，跳过可以让列表更紧凑。
+			continue;
+		}
+
+		const leading = /^[ \t]*/.exec(raw)?.[0] ?? '';
+		const columns = leading.replace(/\t/g, '    ').length;
+		const depth = Math.max(0, Math.floor(columns / 2));
+		const body = raw.slice(leading.length);
+
+		// 空块渲染出来是单个 `-`（trimEnd 掉了行尾空格），也要算作列表项。
+		const isListItem = body.startsWith('- ') || body === '-';
+		const text = isListItem ? (body === '-' ? '' : body.slice(2)) : body;
+
+		out.push({ depth, isListItem, text: text.trimEnd() });
+	}
+
+	return out;
 }
 
 /** 收集块范围内的引用（同一行同一 UUID 只算一次）。 */
@@ -212,11 +259,12 @@ function collectBlocks(
 		 * 去掉首行：它是块自身标题，网页里已单独显示为标题，留着会重复一遍。
 		 * 只保留「块里面有什么」——子块与续行。
 		 */
-		rendered = rendered.slice(1);
+		const contentLines = parseContentLines(rendered.slice(1));
 
-		if (options.maxLines !== undefined && options.maxLines > 0 && rendered.length > options.maxLines) {
-			const omitted = rendered.length - options.maxLines;
-			rendered = rendered.slice(0, options.maxLines);
+		let finalLines = contentLines;
+		if (options.maxLines !== undefined && options.maxLines > 0 && finalLines.length > options.maxLines) {
+			const omitted = finalLines.length - options.maxLines;
+			finalLines = finalLines.slice(0, options.maxLines);
 			warnings.push(`内容过长，已省略 ${omitted} 行`);
 		}
 
@@ -230,7 +278,7 @@ function collectBlocks(
 			},
 			lineRange,
 			size: `${size.lines} 行 / ${size.chars} 字符`,
-			lines: rendered,
+			lines: finalLines,
 			warnings,
 			depth,
 		});

@@ -72,13 +72,33 @@ describe('renderExpandHtml 基本结构', () => {
 		expect(html).toContain('跳到第 2 行');
 	});
 
-	it('内容用 <pre> 保留缩进', async () => {
+	it('内容画成灰点列表，不显示 Markdown 的减号', async () => {
 		const index = await fixture();
 		const view = buildBlockExpandView(index, UUID, { graphRoot: 'graph' });
 		const { html } = renderExpandHtml(view, { nonce: NONCE });
 
-		expect(html).toContain('<pre>');
-		expect(html).toContain('</pre>');
+		expect(html).toContain('<div class="content">');
+		expect(html).toContain('<span class="dot">•</span>');
+		expect(html).toContain('天然');
+		// 不应再出现源码里的减号前缀
+		expect(html).not.toMatch(/<span class="ctx">- /);
+	});
+
+	it('子块按层级套用缩进 class', async () => {
+		const index = await fixture();
+		const view = buildBlockExpandView(index, UUID, { graphRoot: 'graph' });
+		const { html } = renderExpandHtml(view, { nonce: NONCE });
+
+		// 直接子块 depth=1 → .cline.lv1
+		expect(html).toContain('class="cline lv1"');
+	});
+
+	it('缩进用 class 而非内联 style（CSP 会拦内联样式）', async () => {
+		const index = await fixture();
+		const view = buildBlockExpandView(index, UUID, { graphRoot: 'graph' });
+		const { html } = renderExpandHtml(view, { nonce: NONCE });
+
+		expect(html).not.toMatch(/<div class="cline[^"]*"\s+style=/);
 	});
 });
 

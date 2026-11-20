@@ -105,6 +105,38 @@ a.src-link:hover { text-decoration: underline; color: var(--vscode-textLink-acti
 	background: var(--vscode-textCodeBlock-background, rgba(128,128,128,.1));
 	border-radius: 3px;
 }
+/*
+ * 内容区画成灰点列表，与笔记软件（Tine / Logseq）和本插件的反链面板一致。
+ * 不显示 Markdown 的减号标记：那只是源码记号，不是阅读时该看到的东西。
+ */
+.content {
+	margin: 6px 0 0;
+	padding: 8px 10px;
+	background: var(--vscode-textCodeBlock-background, rgba(128,128,128,.06));
+	border-radius: 3px;
+	font-size: .93em;
+	line-height: 1.55;
+}
+.cline { display: flex; gap: 7px; align-items: baseline; }
+.cline .dot {
+	flex: 0 0 auto;
+	opacity: .45;
+	user-select: none;
+	/* 圆点宽度固定，续行文字才能对齐到同一列 */
+	width: 8px;
+	text-align: center;
+}
+.cline .cdot { flex: 0 0 auto; width: 8px; }
+.cline .ctx { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; }
+/* 层级缩进：用固定 class 而不是内联 style，CSP 的 style-src 会拦内联样式 */
+.cline.lv1 { padding-left: 18px; }
+.cline.lv2 { padding-left: 36px; }
+.cline.lv3 { padding-left: 54px; }
+.cline.lv4 { padding-left: 72px; }
+.cline.lv5 { padding-left: 90px; }
+.cline.lv6 { padding-left: 108px; }
+.cline.lv7 { padding-left: 126px; }
+.cline.lv8 { padding-left: 138px; }
 .warn {
 	margin: 6px 0 0;
 	padding: 5px 9px;
@@ -167,7 +199,24 @@ function renderBlock(
 	parts.push('</div>');
 
 	if (block.lines.length > 0) {
-		parts.push(`<pre>${escapeHtml(block.lines.join('\n'))}</pre>`);
+		parts.push('<div class="content">');
+		for (const line of block.lines) {
+			const level = Math.min(Math.max(line.depth, 0), 8);
+			const levelClass = level > 0 ? ` lv${level}` : '';
+			/*
+			 * 列表项画灰点；续行与空块留等宽空位。
+			 * 空块（原文里是单个 `-`）不画点：一个孤零零的圆点看起来像渲染出错，
+			 * 而它实际只是作者留的空行。
+			 */
+			const marker =
+				line.isListItem && line.text.length > 0
+					? '<span class="dot">•</span>'
+					: '<span class="cdot"></span>';
+			parts.push(
+				`<div class="cline${levelClass}">${marker}<span class="ctx">${escapeHtml(line.text)}</span></div>`,
+			);
+		}
+		parts.push('</div>');
 	}
 	/*
 	 * 不再对「没有子块」输出「（该块没有内容）」。

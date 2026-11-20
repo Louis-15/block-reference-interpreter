@@ -280,7 +280,7 @@ tine block show <uuid> --graph <图谱>
 
 - `vscode.languages.registerHoverProvider({ language: 'markdown' })`
 - 只在 graph 内的 `pages/`、`journals/` 文件生效
-- 悬停 `((uuid))` 显示：块内容（默认前 12 行）+ 来源 + 「展开全文」链接
+- 悬停 `((uuid))` 显示：块内容（默认前 6 行）+ 来源 + 「展开全文（Ctrl+Click）」「反向链接」链接
 - 悬空引用显示明确的「目标块不存在」
 - 重复 ID 显示「存在 N 个同名 ID 的块」并列出候选
 
@@ -295,7 +295,7 @@ tine block show <uuid> --graph <图谱>
 | `tineBlockRef.exclude` | `["logseq/**",".tine-trash/**","**/bak/**"]` | 排除 |
 | `tineBlockRef.maxDepth` | `3` | 嵌套展开深度 |
 | `tineBlockRef.maxOutputChars` | `20000` | 单次输出预算 |
-| `tineBlockRef.hoverPreviewLines` | `12` | 悬停显示行数 |
+| `tineBlockRef.hoverPreviewLines` | `6` | 悬停显示行数 |
 | `tineBlockRef.hideProperties` | `["id","collapsed"]` | 渲染时隐藏的属性 |
 | `tineBlockRef.inlineRender.enabled` | `true` | 是否把 `((uuid))` 显示成块标题 |
 | `tineBlockRef.inlineRender.mode` | `"replace"` | `replace` 隐藏原文 / `append` 追加标题 |

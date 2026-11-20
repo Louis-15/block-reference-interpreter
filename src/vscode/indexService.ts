@@ -32,7 +32,7 @@ export function readConfig() {
 		]),
 		maxDepth: config.get<number>('maxDepth', 3),
 		maxOutputChars: config.get<number>('maxOutputChars', 20000),
-		hoverPreviewLines: config.get<number>('hoverPreviewLines', 12),
+		hoverPreviewLines: config.get<number>('hoverPreviewLines', 6),
 		hideProperties: config.get<string[]>('hideProperties', ['id', 'collapsed']),
 		inlineRenderEnabled: config.get<boolean>('inlineRender.enabled', true),
 		inlineRenderMode: config.get<string>('inlineRender.mode', 'replace'),

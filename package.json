@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "块引用解释器",
   "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -214,9 +214,9 @@
         },
         "tineBlockRef.hoverPreviewLines": {
           "type": "number",
-          "default": 12,
+          "default": 6,
           "minimum": 1,
-          "description": "悬停预览显示的块内容行数。"
+          "description": "悬停预览显示的块内容行数。行数越少，整体高度越矮，底部的「展开全文/反向链接」按钮越不容易被滚动隐藏。"
         },
         "tineBlockRef.hideProperties": {
           "type": "array",

@@ -4,11 +4,14 @@
  * 为什么抽出来：行内渲染与 HoverProvider 都要显示「块 + 子块」，
  * 两处各写一份必然走偏。抽成一个函数，改一处两边同步。
  *
- * 关于按钮位置的取舍：
+ * 布局策略（围绕一个硬限制设计）：
  * VS Code 的 hover 只能返回**一个** MarkdownString，全部内容渲染在同一个
- * 滚动容器里，没有任何 API 能再生成一个独立的悬浮容器放按钮。
- * 所以按钮固定在内容**最上方**：打开 hover 第一眼就能看到，
- * 不需要先滚到底。这也是在单容器限制下唯一不别扭的位置。
+ * 有最大高度的滚动容器里，没有任何 API 能生成独立的悬浮容器。
+ * 既然无法「固定」按钮，那就让内容**根本不需要滚动**：
+ * 预览行数默认压到 6 行，整体高度远低于容器上限，
+ * 于是底部的按钮永远可见，鼠标不必滚动即可点击。
+ * 行数可由 `tineBlockRef.hoverPreviewLines` 调整；
+ * 调得过大时仍可能出现滚动，那是配置取舍而非布局缺陷。
  */
 
 import * as vscode from 'vscode';
@@ -27,11 +30,21 @@ export interface HoverContentConfig {
 	stripHeadingMarks: boolean;
 }
 
-/** 生成「展开全文 · 反向链接」这一行链接。 */
-function buildActionLinks(uuid: string): string {
-	const expandLink = `[展开全文](command:blockReferenceInterpreter.expandBlockById?${encodeCommandArgs([uuid])})`;
-	const backlinkLink = `[反向链接](command:blockReferenceInterpreter.showBacklinks?${encodeCommandArgs([uuid])})`;
-	return `${expandLink} · ${backlinkLink}`;
+/**
+ * 生成底部的操作行。
+ *
+ * 只放「展开全文」一个链接。
+ *
+ * 为什么不再放「反向链接」：被引块的来源文件与行号已经显示在悬停最上方，
+ * 用户点过去就能看到，再挂一个反链入口属于重复信息。
+ * 反向链接功能本身保留为独立命令（命令面板可调）。
+ *
+ * 为什么不再手写 `（Ctrl+Click）`：
+ * VS Code 会为 DocumentLink 自动追加 `(ctrl + 单击)` 提示。
+ * 自己再写一遍就变成两行重复说明。
+ */
+function buildExpandLink(uuid: string): string {
+	return `[展开全文](command:blockReferenceInterpreter.expandBlockById?${encodeCommandArgs([uuid])})`;
 }
 
 /**
@@ -55,10 +68,7 @@ export function buildBlockHover(
 
 	if (candidates.length === 0) {
 		markdown.appendMarkdown('**⚠ 未找到该块**\n\n');
-		markdown.appendMarkdown(`UUID \`${uuid}\` 没有对应的块。可能已被删除，或引用来自其他图谱。\n\n`);
-		markdown.appendMarkdown(
-			`[反向链接](command:blockReferenceInterpreter.showBacklinks?${encodeCommandArgs([uuid])})`,
-		);
+		markdown.appendMarkdown(`UUID \`${uuid}\` 没有对应的块。可能已被删除，或引用来自其他图谱。`);
 		return markdown;
 	}
 
@@ -92,22 +102,17 @@ export function buildBlockHover(
 		const title = config.stripHeadingMarks ? stripHeadingMarks(rawTitle) : rawTitle;
 		markdown.appendMarkdown(`**${title}**\n\n`);
 
-		// 按钮紧跟标题，保证不用滚动就能点到。
-		markdown.appendMarkdown(`${buildActionLinks(uuid)}\n\n`);
-
 		if (config.hoverPreviewLines > 0) {
-			const preview = buildPreview(candidate, config);
+			const preview = buildPreview(candidate, config, title);
 			if (preview) {
 				// 用代码块包裹：既能保留缩进结构，也避免笔记里的 ==高亮== 等语法在 hover 里被渲染。
 				markdown.appendCodeblock(preview, 'markdown');
 			}
-
-			if (size.lines > config.hoverPreviewLines) {
-				markdown.appendMarkdown(
-					`\n（仅显示前 ${config.hoverPreviewLines} 行，点上方「展开全文」看完整内容）`,
-				);
-			}
 		}
+
+		// 按钮放最后；前面刻意不写「已截断」提示——来源行已有总行数，
+		// 「展开全文」本身也说明了还有更多内容，再占一行不划算。
+		markdown.appendMarkdown(`\n${buildExpandLink(uuid)}`);
 	}
 
 	return markdown;
@@ -117,16 +122,36 @@ export function buildBlockHover(
  * 生成预览文本：渲染整棵子树后按行截断。
  *
  * 预览刻意包含子块：只显示块首行往往是一句概括，「背后的内容」恰恰在子块里。
+ *
+ * @param displayedTitle 上方已经单独用粗体显示过的标题。
+ *   渲染结果的第一行与它重复，这里直接跳过——悬停框的每一行高度都很宝贵。
  */
-function buildPreview(candidate: BlockLookupResult, config: HoverContentConfig): string {
+function buildPreview(
+	candidate: BlockLookupResult,
+	config: HoverContentConfig,
+	displayedTitle: string,
+): string {
 	const rendered = renderBlockTree(candidate.parsed, candidate.blockIndex, {
 		includeChildren: true,
 		hideProperties: config.hideProperties,
 		stripHeadingMarks: config.stripHeadingMarks,
 	});
+
 	const lines = rendered.split('\n');
+	if ((lines[0] ?? '').trim() === displayedTitle.trim()) {
+		lines.shift();
+	}
+
+	// 去掉开头因跳过标题而产生的空行。
+	while (lines.length > 0 && (lines[0] ?? '').trim() === '') {
+		lines.shift();
+	}
+
+	if (lines.length === 0) {
+		return '';
+	}
 	if (lines.length <= config.hoverPreviewLines) {
-		return rendered;
+		return lines.join('\n');
 	}
 	return [...lines.slice(0, config.hoverPreviewLines), '…'].join('\n');
 }

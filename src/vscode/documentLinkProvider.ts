@@ -65,8 +65,10 @@ export class BlockReferenceDocumentLinkProvider implements vscode.DocumentLinkPr
 						`command:blockReferenceInterpreter.expandBlockById?${encodeCommandArgs([reference.uuid])}`,
 					),
 				);
-				// tooltip 会显示在悬停内容末尾，写太长会显得臃肿，两个字够了。
-				link.tooltip = '展开';
+				// tooltip 会作为独立一行显示在悬停内容末尾。
+				// 提示文字已经写进悬停里的按钮行了，这里不再重复，
+				// 但又不能留空——空值会让 VS Code 回退显示 `command:...` 原始 URI，更难看。
+				link.tooltip = ' ';
 				links.push(link);
 			}
 		}

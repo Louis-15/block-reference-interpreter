@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "块引用解释器",
   "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -307,6 +307,13 @@
           ],
           "default": "html",
           "description": "反链面板的呈现方式。文本编辑器里的链接强制要求 Ctrl + 单击（VS Code 硬规则），只有网页面板能做到左键单击跳转。"
+        },
+        "tineBlockRef.backlinks.subtreeLines": {
+          "type": "number",
+          "default": 0,
+          "description": "反链面板里每个引用块最多展开多少行子树内容。0 表示不限制（默认）——Tine 也是完整显示。真实库里有极少数块子树超过 400 行，嫌长可设成 30 之类的值。",
+          "minimum": 0,
+          "maximum": 2000
         },
         "tineBlockRef.backlinks.itemsPerPage": {
           "type": "number",

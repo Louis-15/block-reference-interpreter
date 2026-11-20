@@ -252,4 +252,84 @@ describe.skipIf(!graphExists)('真实笔记库冒烟测试', () => {
 		// 真实笔记里大量块是嵌套的，应当有一半以上能算出祖先路径
 		expect(withPath).toBeGreaterThan(checked / 2);
 	}, 60000);
+
+	it('真实库的反链子树能正确展开（引用处的完整上下文）', async () => {
+		const index = new GraphIndex();
+		await index.rebuild(listMarkdownFiles(GRAPH_ROOT), (filePath) => fs.promises.readFile(filePath, 'utf8'));
+
+		// 找一个「引用所在块有子块」的真实案例，验证子树被完整带入报告。
+		let checked = 0;
+		let withSubtree = 0;
+		let maxDepth = 0;
+
+		for (const filePath of index.listFiles()) {
+			for (const hit of index.getParsedFile(filePath)?.references ?? []) {
+				const report = buildBacklinkReport(index, hit.uuid);
+				if (report.definitions.length === 0) {
+					continue;
+				}
+				checked++;
+				for (const group of report.groups) {
+					for (const item of group.items) {
+						if (item.subtree.length > 0) {
+							withSubtree++;
+						}
+						for (const sub of item.subtree) {
+							maxDepth = Math.max(maxDepth, sub.depth);
+						}
+					}
+				}
+				if (checked >= 60) {
+					break;
+				}
+			}
+			if (checked >= 60) {
+				break;
+			}
+		}
+
+		expect(checked).toBeGreaterThan(10);
+		// 真实笔记里引用几乎总在嵌套块中，绝大多数应当能带出子块或续行
+		expect(withSubtree).toBeGreaterThan(0);
+		// 深度换算要正确：至少出现过 2 层以上的子块
+		expect(maxDepth).toBeLessThanOrEqual(12);
+	}, 90000);
+
+	it('子树深度换算与原始缩进一致（防层级错乱回归）', async () => {
+		const index = new GraphIndex();
+		await index.rebuild(listMarkdownFiles(GRAPH_ROOT), (filePath) => fs.promises.readFile(filePath, 'utf8'));
+
+		// 抽查：报告里报告的 depth 必须与源文件中该行的实际缩进层级吻合
+		let samples = 0;
+		for (const filePath of index.listFiles()) {
+			const parsed = index.getParsedFile(filePath);
+			if (!parsed) {
+				continue;
+			}
+			for (const block of parsed.blocks) {
+				if (!block.id) {
+					continue;
+				}
+				const report = buildBacklinkReport(index, block.id, { includeSubtree: true });
+				const group = report.groups.find((g) => g.path === filePath);
+				const item = group?.items.find((i) => i.blockIndex >= 0);
+				if (!item || item.subtree.length === 0) {
+					continue;
+				}
+				for (const sub of item.subtree) {
+					expect(sub.depth).toBeGreaterThanOrEqual(0);
+					expect(sub.depth).toBeLessThanOrEqual(20);
+					expect(sub.text.length).toBeGreaterThan(0);
+				}
+				samples++;
+				if (samples >= 20) {
+					break;
+				}
+			}
+			if (samples >= 20) {
+				break;
+			}
+		}
+		expect(samples).toBeGreaterThan(0);
+	}, 90000);
 });

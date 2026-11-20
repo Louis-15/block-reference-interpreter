@@ -52,6 +52,7 @@ export function readConfig() {
 		showIndexNotification: config.get<boolean>('showIndexNotification', true),
 		backlinkStyle: config.get<string>('backlinks.style', 'inline'),
 		backlinkPanelStyle: config.get<string>('backlinks.panel', 'html'),
+		backlinkSubtreeLines: config.get<number>('backlinks.subtreeLines', 0),
 		backlinkItemsPerPage: config.get<number>('backlinks.itemsPerPage', 20),
 		backlinkPathDepth: config.get<number>('backlinks.pathDepth', 3),
 	};

@@ -16,7 +16,27 @@
 import { buildBlockPath } from './blockPath';
 import type { BacklinkEntry, GraphIndex } from './graphIndex';
 import { cleanReferenceLine } from './refText';
-import { getBlockTitle, stripHeadingMarks } from './render';
+import { getBlockTitle, renderBlockTree, stripHeadingMarks } from './render';
+
+/**
+ * 引用所在块的子树中的一行。
+ *
+ * 为什么要展开子树：Tine / Logseq 的反链面板不只显示「哪一行引用了它」，
+ * 还会把那个块的完整内容（含子块）摆出来。只给一行标题的话，
+ * 用户还得自己打开笔记才知道这句话到底在说什么。
+ */
+export interface BacklinkSubtreeLine {
+	/**
+	 * 相对引用块标题的缩进层级。
+	 *
+	 * 0 = 引用块自身的续行（与标题同层），1 = 直接子块，2 = 孙块……
+	 */
+	depth: number;
+	/** 行文本（已去掉 `- ` 标记与前导空白）。 */
+	text: string;
+	/** 是否为列表项；false 表示块的续行正文。 */
+	isListItem: boolean;
+}
 
 /** 一条引用（按「引用所在块」合并后的结果）。 */
 export interface BacklinkItem {
@@ -36,6 +56,10 @@ export interface BacklinkItem {
 	lineText: string;
 	/** 引用所在块的祖先路径（不含自身）；没有祖先时为空字符串。 */
 	blockPath: string;
+	/** 引用所在块的子树（标题之后的行），用于在面板里完整展示上下文。 */
+	subtree: BacklinkSubtreeLine[];
+	/** 因超过行数上限而未展开的行数。 */
+	subtreeOmitted: number;
 }
 
 /** 同一个文件内的全部引用。 */
@@ -80,6 +104,69 @@ export interface BacklinkReportOptions {
 	stripHeading?: boolean;
 	/** 路径最多保留几级祖先，默认 3——太长的面包屑在窄面板里会被折断。 */
 	maxPathDepth?: number;
+	/**
+	 * 是否展开引用所在块的子树，默认 true。
+	 *
+	 * 只为拿计数的地方（编辑器内徽章）应传 false：那边只关心数字，
+	 * 展开子树是白费力气。
+	 */
+	includeSubtree?: boolean;
+	/** 渲染时隐藏的属性名（`id`、`collapsed` 等）。不传用默认值。 */
+	hideProperties?: string[];
+	/**
+	 * 每个引用块最多展开多少行子树，0 表示不限制（默认）。
+	 *
+	 * 真实库里 90% 以上的被引用块子树在 20 行内，但不乏 485 行的巨型块。
+	 * 需要时可以设个上限避免面板过长。
+	 */
+	maxSubtreeLines?: number;
+}
+
+/**
+ * 把 `renderBlockTree` 的多行输出解析成带层级的行。
+ *
+ * `renderBlockTree` 用「2 空格 × 层级 + `- `」表示列表项，
+ * 块的续行正文只有缩进没有 `- `。这里按缩进列数换算层级：
+ * 0 列 = 引用块自身的续行，2 列 = 直接子块，4 列 = 孙块……
+ */
+function parseSubtreeLines(treeText: string, maxLines: number): {
+	lines: BacklinkSubtreeLine[];
+	omitted: number;
+} {
+	const rawLines = treeText.split('\n');
+	// 第一行是块自身标题，已在 blockTitle 里，跳过。
+	const rest = rawLines.slice(1);
+
+	const lines: BacklinkSubtreeLine[] = [];
+
+	for (const raw of rest) {
+		if (raw.trim() === '') {
+			continue;
+		}
+
+		const leading = /^[ \t]*/.exec(raw)?.[0].length ?? 0;
+		// 制表符按 4 列展开后再算层级，否则 tab 缩进的块层级会算错。
+		const columns = raw.slice(0, leading).replace(/\t/g, '    ').length;
+		// 缩进单位固定 2 空格（renderBlockTree 的默认 indentUnit）。
+		const depth = Math.max(0, Math.floor(columns / 2));
+
+		const body = raw.slice(leading);
+		const isListItem = body.startsWith('- ');
+		const text = (isListItem ? body.slice(2) : body).trimEnd();
+		if (text.trim() === '') {
+			continue;
+		}
+
+		if (maxLines > 0 && lines.length >= maxLines) {
+			// 达到上限：统计剩余行数后停止。
+			const omitted = rest.length - lines.length;
+			return { lines, omitted };
+		}
+
+		lines.push({ depth, text, isListItem });
+	}
+
+	return { lines, omitted: 0 };
 }
 
 /**
@@ -111,6 +198,25 @@ function mergeHits(
 		const rawTitle = block ? getBlockTitle(block.ownLines[0] ?? '') : entry.lineText.trim();
 		const blockTitle = options.stripHeading === false ? rawTitle : stripHeadingMarks(rawTitle);
 
+		// 展开子树：让面板能像 Tine 一样显示引用处的完整上下文。
+		let subtree: BacklinkSubtreeLine[] = [];
+		let subtreeOmitted = 0;
+		if ((options.includeSubtree ?? true) && entry.blockIndex >= 0) {
+			try {
+				const treeText = renderBlockTree(parsed, entry.blockIndex, {
+					stripHeadingMarks: options.stripHeading !== false,
+					hideProperties: options.hideProperties,
+				});
+				const parsedTree = parseSubtreeLines(treeText, options.maxSubtreeLines ?? 0);
+				subtree = parsedTree.lines;
+				subtreeOmitted = parsedTree.omitted;
+			} catch {
+				// 子树渲染失败不应该让整个面板挂掉，降级为只显示标题。
+				subtree = [];
+				subtreeOmitted = 0;
+			}
+		}
+
 		byBlock.set(key, {
 			path: entry.path,
 			blockIndex: entry.blockIndex,
@@ -119,6 +225,8 @@ function mergeHits(
 			count: 1,
 			blockTitle,
 			lineText: entry.lineText,
+			subtree,
+			subtreeOmitted,
 			blockPath: buildBlockPath(parsed, entry.blockIndex, {
 				maxDepth: options.maxPathDepth ?? 3,
 				stripHeading: options.stripHeading !== false,
@@ -464,7 +572,8 @@ export function renderBacklinkPanel(
 				push(`- ${item.blockPath}`);
 			}
 
-			const prefix = hasPath ? '  - ' : '- ';
+			// 引用块标题缩进一级，体现它是面包屑最后那一级的子块。
+			const prefix = hasPath ? '    ' : '  ';
 			const linkText = targetTitle.length > 0 ? targetTitle : `第 ${item.line + 1} 行`;
 
 			const kindText = item.kinds.includes('embed')
@@ -484,6 +593,17 @@ export function renderBacklinkPanel(
 			});
 
 			push(prefix + linkText);
+
+			// 子树按层级缩进，与 Tine 的反链面板一致。
+			const baseIndent = prefix + '  ';
+			for (const sub of item.subtree) {
+				const indent = baseIndent + '  '.repeat(Math.min(sub.depth + 1, 8));
+				push(`${indent}${sub.isListItem ? '- ' : ''}${sub.text}`);
+			}
+			if (item.subtreeOmitted > 0) {
+				push(`${baseIndent}  … 还有 ${item.subtreeOmitted} 行未展开`);
+			}
+
 			emitted++;
 		}
 

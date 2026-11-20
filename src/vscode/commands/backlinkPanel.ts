@@ -57,6 +57,10 @@ export async function showBacklinksPanel(deps: CommandDeps, uuid?: string): Prom
 	const config = readConfig();
 	const report = buildBacklinkReport(deps.getIndex(), normalized, {
 		maxPathDepth: config.backlinkPathDepth,
+		// 面板要展示引用处的完整上下文，所以保留子树。
+		includeSubtree: true,
+		hideProperties: config.hideProperties,
+		maxSubtreeLines: config.backlinkSubtreeLines,
 	});
 	const graphRoot = deps.getGraphRoot();
 	const title = `反链 ${normalized.slice(0, 8)}`;

@@ -77,7 +77,10 @@ export class BacklinkAnchorCache {
 			}
 
 			try {
-				const report = buildBacklinkReport(index, block.id);
+				const report = buildBacklinkReport(index, block.id, {
+					// 这里只需要计数，展开子树纯属浪费——一篇笔记可能有几十个块。
+					includeSubtree: false,
+				});
 				// 没人引用就什么都不显示——真实库里绝大多数块属于这一类。
 				if (report.itemCount === 0) {
 					continue;

@@ -127,7 +127,7 @@ body {
 .page .meta { font-size: .85em; color: var(--vscode-descriptionForeground); margin-bottom: 8px; }
 .page .meta code { font-family: var(--vscode-editor-font-family); }
 ul.refs { list-style: none; margin: 0; padding: 0; }
-li.ref-item { margin: 0 0 2px; padding: 3px 8px; border-radius: 3px; }
+li.ref-item { margin: 0 0 10px; padding: 3px 8px; border-radius: 3px; }
 li.ref-item:hover { background: var(--vscode-list-hoverBackground); }
 .crumb { font-size: .85em; color: var(--vscode-descriptionForeground); word-break: break-word; }
 a.ref {
@@ -139,6 +139,24 @@ a.ref {
 	word-break: break-word;
 }
 a.ref:hover { text-decoration: underline; color: var(--vscode-textLink-activeForeground, #3794ff); }
+/* 引用块标题比面包屑深一级，体现「引用发生在这个父块的子块里」 */
+.title-line { padding-left: 18px; }
+/*
+ * 子树缩进：层级用固定 class 而不是内联 style —— CSP 的 style-src 只放行
+ * 带 nonce 的 <style>，内联 style 属性会被拦掉，缩进就会全部失效。
+ * 层级超过 8 层时统一用 d8，实际笔记极少超过 4 层。
+ */
+.sub { font-size: .92em; line-height: 1.5; padding-left: 36px; }
+.sub.d1 { padding-left: 36px; }
+.sub.d2 { padding-left: 54px; }
+.sub.d3 { padding-left: 72px; }
+.sub.d4 { padding-left: 90px; }
+.sub.d5 { padding-left: 108px; }
+.sub.d6 { padding-left: 126px; }
+.sub.d7 { padding-left: 144px; }
+.sub.d8 { padding-left: 160px; }
+.sub .bullet { opacity: .45; margin-right: 6px; }
+.sub-more { font-size: .85em; color: var(--vscode-descriptionForeground); padding-left: 36px; }
 .empty { color: var(--vscode-descriptionForeground); }
 .more { font-size: .85em; color: var(--vscode-descriptionForeground); padding-left: 8px; }
 `;
@@ -253,9 +271,26 @@ export function renderBacklinkHtml(
 			if (item.blockPath.length > 0) {
 				bodyParts.push(`<div class="crumb">${escapeHtml(stripEmphasis(item.blockPath))}</div>`);
 			}
+			// 引用块标题缩进一级，体现它是面包屑最后那一级的子块。
 			bodyParts.push(
-				`<a class="ref" data-i="${index}" title="${escapeHtml(tooltip)}">${escapeHtml(stripEmphasis(text))}</a>`,
+				`<div class="title-line"><a class="ref" data-i="${index}" title="${escapeHtml(tooltip)}">${escapeHtml(stripEmphasis(text))}</a></div>`,
 			);
+
+			// 子树按层级缩进展示，让用户不用打开笔记就知道这句话在说什么。
+			for (const sub of item.subtree) {
+				const depthClass = `d${Math.min(Math.max(sub.depth, 0), 8)}`;
+				const bullet = sub.isListItem ? '<span class="bullet">•</span>' : '';
+				bodyParts.push(
+					`<div class="sub ${depthClass}">${bullet}${escapeHtml(stripEmphasis(sub.text))}</div>`,
+				);
+			}
+
+			if (item.subtreeOmitted > 0) {
+				bodyParts.push(
+					`<div class="sub-more">… 还有 ${item.subtreeOmitted} 行未展开</div>`,
+				);
+			}
+
 			bodyParts.push('</li>');
 		}
 

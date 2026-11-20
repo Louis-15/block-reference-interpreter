@@ -245,3 +245,116 @@ describe('renderBacklinkHtml 显示细节', () => {
 		expect(html).toMatch(/第 1 行<\/a>/);
 	});
 });
+
+describe('renderBacklinkHtml 子树与缩进', () => {
+	/** 构造带三层嵌套的引用场景。 */
+	async function nestedFixture(): Promise<GraphIndex> {
+		return fixture({
+			'pages/t.md': TARGET,
+			'pages/ref.md': `- 父级
+	- 引用所在块 ((6780f110-d8e8-489f-be72-d2b3dbbc5668))
+		- 直接子块
+			- 孙块
+`,
+		});
+	}
+
+	it('引用块标题单独占一行并缩进一级', async () => {
+		const index = await nestedFixture();
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).toContain('<div class="title-line">');
+		// 面包屑不带缩进，标题带缩进
+		expect(html).toMatch(/<div class="crumb">[\s\S]*?<div class="title-line"><a class="ref"/);
+	});
+
+	it('子块按 depth 套用缩进 class', async () => {
+		const index = await nestedFixture();
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		// 直接子块 depth=1 → .sub.d1；孙块 depth=2 → .sub.d2
+		expect(html).toContain('<div class="sub d1">');
+		expect(html).toContain('<div class="sub d2">');
+		expect(html).toContain('直接子块');
+		expect(html).toContain('孙块');
+	});
+
+	it('子块层级用 class 而非内联 style（CSP 会拦内联 style）', async () => {
+		const index = await nestedFixture();
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		// 正文里不能出现 style= 属性
+		expect(html).not.toMatch(/<div class="sub[^"]*"\s+style=/);
+	});
+
+	it('列表项带圆点，续行不带', async () => {
+		const index = await fixture({
+			'pages/t.md': TARGET,
+			'pages/ref.md': `- 引用块 ((6780f110-d8e8-489f-be72-d2b3dbbc5668))
+	这是块自身的续行
+	- 这是子块
+`,
+		});
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).toContain('<span class="bullet">•</span>这是子块');
+
+		// 续行所在 div 不应带圆点
+		const continuationDiv = /<div class="sub d\d">([\s\S]*?)<\/div>/.exec(html);
+		expect(continuationDiv?.[1]).toBeDefined();
+		expect(continuationDiv?.[1] ?? '').toContain('这是块自身的续行');
+		expect(continuationDiv?.[1] ?? '').not.toContain('bullet');
+	});
+
+	it('maxSubtreeLines 达到上限时提示剩余行数', async () => {
+		const index = await fixture({
+			'pages/t.md': TARGET,
+			'pages/ref.md': `- 引用块 ((6780f110-d8e8-489f-be72-d2b3dbbc5668))
+	- 子一
+	- 子二
+	- 子三
+`,
+		});
+		const report = buildBacklinkReport(index, UUID, { maxSubtreeLines: 1 });
+		const { html } = renderBacklinkHtml(report, { nonce: NONCE });
+
+		expect(html).toContain('还有');
+		expect(html).toContain('行未展开');
+		expect(html).not.toContain('子三');
+	});
+
+	it('includeSubtree: false 时不渲染任何子块', async () => {
+		const index = await nestedFixture();
+		const report = buildBacklinkReport(index, UUID, { includeSubtree: false });
+		const { html } = renderBacklinkHtml(report, { nonce: NONCE });
+
+		expect(html).not.toContain('直接子块');
+		expect(html).not.toContain('class="sub');
+	});
+
+	it('子块内容也会转义，不会注入标签', async () => {
+		const index = await fixture({
+			'pages/t.md': TARGET,
+			'pages/ref.md': `- 引用块 ((6780f110-d8e8-489f-be72-d2b3dbbc5668))
+	- <img src=x onerror=alert(1)>
+`,
+		});
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).not.toMatch(/<img\s/);
+		expect(html).toContain('&lt;img');
+	});
+
+	it('子块里的 ** 强调标记也被去掉', async () => {
+		const index = await fixture({
+			'pages/t.md': TARGET,
+			'pages/ref.md': `- 引用块 ((6780f110-d8e8-489f-be72-d2b3dbbc5668))
+	- **加粗的子块**
+`,
+		});
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).toContain('加粗的子块');
+		expect(html).not.toContain('**加粗的子块**');
+	});
+});

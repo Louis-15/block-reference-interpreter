@@ -401,9 +401,9 @@ describe('renderBacklinkPanel（给人看的面板，带可点击链接）', () 
 		if (!link) {
 			return;
 		}
-		// 前缀应当是缩进的列表标记
+		// 引用块标题比 `- 面包屑` 深一级（无列表标记，纯缩进）
 		const prefix = lineAt(panel.text, link.line).slice(0, link.startColumn);
-		expect(prefix).toBe('  - ');
+		expect(prefix).toBe('    ');
 	});
 
 	it('悬空引用没有块文字时退回行号，仍可点击', async () => {
@@ -430,5 +430,57 @@ describe('renderBacklinkPanel（给人看的面板，带可点击链接）', () 
 		if (link) {
 			expect(lineAt(panel.text, link.line).slice(link.startColumn, link.endColumn)).toMatch(/第 \d+ 行/);
 		}
+	});
+
+	it('引用块的子块按层级缩进展开（像 Tine 那样显示完整上下文）', async () => {
+		const nested = new GraphIndex();
+		const files: Record<string, string> = {
+			'pages/t.md': TARGET_NOTE,
+			'pages/ref.md': `- 一层父块
+	- 二层父块
+		- ((6780f110-d8e8-489f-be72-d2b3dbbc5668))
+			- 子块甲
+			- 子块乙
+				- 孙块丙
+`,
+		};
+		await nested.rebuild(Object.keys(files), (filePath) => Promise.resolve(files[filePath] ?? ''));
+
+		const panel = renderBacklinkPanel(buildBacklinkReport(nested, UUID));
+		const lines = panel.text.split('\n');
+
+		const link = panel.links[0];
+		expect(link).toBeDefined();
+		if (!link) {
+			return;
+		}
+
+		// 链接下一行开始是子块，逐级更深
+		const subLines = lines.slice(link.line + 1, link.line + 4);
+		expect(subLines[0]).toContain('子块甲');
+		expect(subLines[1]).toContain('子块乙');
+		expect(subLines[2]).toContain('孙块丙');
+
+		const indentOf = (text: string): number => text.length - text.trimStart().length;
+		expect(indentOf(subLines[0]!)).toBeLessThan(indentOf(subLines[2]!));
+	});
+
+	it('子块数量为 0 时不留空行', async () => {
+		const single = new GraphIndex();
+		const files: Record<string, string> = {
+			'pages/t.md': TARGET_NOTE,
+			'pages/ref.md': `- 单行父块\n\t\t- ((6780f110-d8e8-489f-be72-d2b3dbbc5668))\n`,
+		};
+		await single.rebuild(Object.keys(files), (filePath) => Promise.resolve(files[filePath] ?? ''));
+
+		const panel = renderBacklinkPanel(buildBacklinkReport(single, UUID));
+		const lines = panel.text.split('\n');
+		const link = panel.links[0];
+		expect(link).toBeDefined();
+		if (!link) {
+			return;
+		}
+		// 链接行之后应当是空行（分组间距），不是一串空白缩进
+		expect((lines[link.line + 1] ?? '').trim()).toBe('');
 	});
 });

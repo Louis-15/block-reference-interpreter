@@ -264,8 +264,8 @@ describe('renderBacklinkHtml 子树与缩进', () => {
 		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
 
 		expect(html).toContain('<div class="title-line">');
-		// 面包屑不带缩进，标题带缩进
-		expect(html).toMatch(/<div class="crumb">[\s\S]*?<div class="title-line"><a class="ref"/);
+		// 面包屑在前，标题行（含三角与链接）在后
+		expect(html).toMatch(/<div class="crumb">[\s\S]*?<div class="title-line">[\s\S]*?<a class="ref"/);
 	});
 
 	it('子块按 depth 套用缩进 class', async () => {
@@ -356,5 +356,91 @@ describe('renderBacklinkHtml 子树与缩进', () => {
 
 		expect(html).toContain('加粗的子块');
 		expect(html).not.toContain('**加粗的子块**');
+	});
+});
+
+describe('renderBacklinkHtml 折叠三角', () => {
+	it('有子块的引用项带折叠按钮', async () => {
+		const index = await fixture({
+			'pages/t.md': TARGET,
+			'pages/ref.md': `- 引用块 ((6780f110-d8e8-489f-be72-d2b3dbbc5668))
+	- 子块
+`,
+		});
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).toContain('<button class="toggle"');
+		expect(html).toContain('aria-expanded="true"');
+		// 默认展开状态用 ▾
+		expect(html).toContain('>▾</button>');
+	});
+
+	it('没有子块的引用项不带按钮，只留等宽占位', async () => {
+		const index = await fixture({
+			'pages/t.md': TARGET,
+			'pages/ref.md': `- 单独一行引用 ((6780f110-d8e8-489f-be72-d2b3dbbc5668))\n`,
+		});
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).not.toContain('<button class="toggle"');
+		expect(html).toContain('<span class="toggle-placeholder"></span>');
+	});
+
+	it('子树包在 .subtree 容器里，便于整体折叠', async () => {
+		const index = await fixture({
+			'pages/t.md': TARGET,
+			'pages/ref.md': `- 引用块 ((6780f110-d8e8-489f-be72-d2b3dbbc5668))
+	- 子块
+`,
+		});
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).toContain('<div class="subtree">');
+		// 子树容器必须在 </li> 之前闭合
+		expect(html).toMatch(/<div class="subtree">[\s\S]*?<\/div>\s*<\/li>/);
+	});
+
+	it('折叠状态的键用 UUID + 序号，不含本机绝对路径', async () => {
+		const index = await fixture({
+			'pages/t.md': TARGET,
+			'pages/ref.md': `- 引用块 ((6780f110-d8e8-489f-be72-d2b3dbbc5668))
+	- 子块
+`,
+		});
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).toContain(`data-key="${UUID}|0"`);
+		expect(html).not.toMatch(/data-key="[^"]*pages\//);
+	});
+
+	it('提供全部折叠 / 全部展开按钮', async () => {
+		const index = await fixture();
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).toContain('<button id="toggle-all"');
+	});
+
+	it('脚本里包含折叠状态持久化逻辑', async () => {
+		const index = await fixture();
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		// 用 webview state 记住折叠选择，重建内容后能恢复
+		expect(html).toContain('api.getState()');
+		expect(html).toContain('api.setState');
+		expect(html).toContain('collapsed');
+	});
+
+	it('折叠样式存在（.collapsed 隐藏 .subtree）', async () => {
+		const index = await fixture();
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).toContain('.ref-item.collapsed .subtree { display: none; }');
+	});
+
+	it('提示文案说明了三角的作用', async () => {
+		const index = await fixture();
+		const { html } = renderBacklinkHtml(buildBacklinkReport(index, UUID), { nonce: NONCE });
+
+		expect(html).toContain('小三角');
 	});
 });

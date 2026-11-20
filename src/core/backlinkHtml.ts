@@ -115,6 +115,19 @@ body {
 .head .label { color: var(--vscode-descriptionForeground); }
 .head .block-content { font-weight: 600; }
 .head .hint { margin-top: 10px; font-size: .88em; color: var(--vscode-descriptionForeground); }
+.head .toolbar { margin-top: 8px; }
+.head .toolbar button {
+	padding: 3px 10px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 3px;
+	background: var(--vscode-button-secondaryBackground, rgba(128,128,128,.2));
+	color: var(--vscode-button-secondaryForeground, inherit);
+	font-family: inherit;
+	font-size: .85em;
+	cursor: pointer;
+}
+.head .toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,.35)); }
+.head .toolbar button:disabled { opacity: .5; cursor: default; }
 .warn {
 	margin: 10px 0;
 	padding: 8px 12px;
@@ -140,14 +153,46 @@ a.ref {
 }
 a.ref:hover { text-decoration: underline; color: var(--vscode-textLink-activeForeground, #3794ff); }
 /* 引用块标题比面包屑深一级，体现「引用发生在这个父块的子块里」 */
-.title-line { padding-left: 18px; }
+.title-line { display: flex; align-items: baseline; gap: 4px; padding-left: 4px; }
+/*
+ * 折叠三角。没有子块的引用不显示三角，但留一个等宽占位，
+ * 否则有子块和没子块的标题会左右错开，看着很乱。
+ */
+.toggle {
+	flex: 0 0 auto;
+	width: 16px;
+	height: 16px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	border: none;
+	border-radius: 2px;
+	background: transparent;
+	color: var(--vscode-icon-foreground, var(--vscode-editor-foreground, #ccc));
+	cursor: pointer;
+	font-size: .95em;
+	line-height: 1;
+	opacity: .95;
+	user-select: none;
+	/* 与链接文字基线对齐：三角字形自带下沉，上提 1px 看着才正 */
+	position: relative;
+	top: 1px;
+}
+.toggle:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.25)); }
+.toggle:focus-visible { outline: 1px solid var(--vscode-focusBorder, #3794ff); outline-offset: 1px; }
+.toggle-placeholder { flex: 0 0 auto; width: 16px; }
+/* 折叠后整棵子树隐藏 */
+.ref-item.collapsed .subtree { display: none; }
+.subtree { padding-left: 4px; }
+/* 折叠状态用左边一条竖线暗示，与 Tine 的引导线一致 */
+.ref-item.collapsed .title-line { opacity: .95; }
 /*
  * 子树缩进：层级用固定 class 而不是内联 style —— CSP 的 style-src 只放行
  * 带 nonce 的 <style>，内联 style 属性会被拦掉，缩进就会全部失效。
  * 层级超过 8 层时统一用 d8，实际笔记极少超过 4 层。
  */
 .sub { font-size: .92em; line-height: 1.5; padding-left: 36px; }
-.sub.d1 { padding-left: 36px; }
 .sub.d2 { padding-left: 54px; }
 .sub.d3 { padding-left: 72px; }
 .sub.d4 { padding-left: 90px; }
@@ -166,6 +211,8 @@ const SCRIPT = `
 (function () {
 	var api = acquireVsCodeApi();
 	var targets = JSON.parse(document.getElementById('targets').textContent);
+
+	// ---- 跳转 ----
 	var links = document.querySelectorAll('a.ref');
 	for (var i = 0; i < links.length; i++) {
 		links[i].addEventListener('click', function (event) {
@@ -175,6 +222,77 @@ const SCRIPT = `
 			api.postMessage({ type: 'jump', path: target.path, line: target.line });
 		});
 	}
+
+	// ---- 折叠状态 ----
+	// 存在 webview state 里：面板内容因切换块而重建时，用户的折叠选择仍能恢复。
+	// 键是「文件路径|行号」，所以不同块的折叠状态互不干扰。
+	var saved = api.getState() || {};
+	var collapsed = saved.collapsed || {};
+
+	function syncItem(li) {
+		var toggle = li.querySelector('.toggle');
+		if (!toggle) { return; }
+		var isCollapsed = !!collapsed[li.dataset.key];
+		li.classList.toggle('collapsed', isCollapsed);
+		toggle.textContent = isCollapsed ? '▸' : '▾';
+		toggle.setAttribute('aria-expanded', String(!isCollapsed));
+	}
+
+	function syncAll() {
+		var items = document.querySelectorAll('.ref-item');
+		for (var k = 0; k < items.length; k++) { syncItem(items[k]); }
+		syncToggleAll();
+	}
+
+	var toggleAllButton = document.getElementById('toggle-all');
+	function syncToggleAll() {
+		if (!toggleAllButton) { return; }
+		var items = document.querySelectorAll('.ref-item .toggle');
+		var anyExpanded = false;
+		for (var k = 0; k < items.length; k++) {
+			if (items[k].getAttribute('aria-expanded') === 'true') { anyExpanded = true; break; }
+		}
+		toggleAllButton.textContent = anyExpanded ? '全部折叠' : '全部展开';
+		toggleAllButton.disabled = items.length === 0;
+	}
+
+	var toggles = document.querySelectorAll('.toggle');
+	for (var t = 0; t < toggles.length; t++) {
+		toggles[t].addEventListener('click', function (event) {
+			event.preventDefault();
+			// 阻止冒泡，避免误触到外层可能的点击处理。
+			event.stopPropagation();
+			var li = this.closest('.ref-item');
+			if (!li) { return; }
+			var key = li.dataset.key;
+			if (collapsed[key]) { delete collapsed[key]; } else { collapsed[key] = true; }
+			api.setState({ collapsed: collapsed });
+			syncItem(li);
+			syncToggleAll();
+		});
+	}
+
+	if (toggleAllButton) {
+		toggleAllButton.addEventListener('click', function (event) {
+			event.preventDefault();
+			var items = document.querySelectorAll('.ref-item .toggle');
+			var anyExpanded = false;
+			for (var k = 0; k < items.length; k++) {
+				if (items[k].getAttribute('aria-expanded') === 'true') { anyExpanded = true; break; }
+			}
+			// 只要还有展开的就全部折起，否则全部展开。
+			var itemsAll = document.querySelectorAll('.ref-item');
+			for (var m = 0; m < itemsAll.length; m++) {
+				var key = itemsAll[m].dataset.key;
+				if (!itemsAll[m].querySelector('.toggle')) { continue; }
+				if (anyExpanded) { collapsed[key] = true; } else { delete collapsed[key]; }
+			}
+			api.setState({ collapsed: collapsed });
+			syncAll();
+		});
+	}
+
+	syncAll();
 })();
 `;
 
@@ -223,7 +341,8 @@ export function renderBacklinkHtml(
 				: '';
 		bodyParts.push(
 			`<div class="row"><span class="label">引用统计：</span>${report.fileCount} 个页面 / ${report.itemCount} 个引用块${escapeHtml(hitNote)}</div>`,
-			'<div class="hint">单击下方蓝色文字即可跳到引用位置。</div>',
+			'<div class="hint">单击蓝色文字跳到引用位置；点左侧小三角可折叠或展开子块。</div>',
+			'<div class="toolbar"><button id="toggle-all" type="button">全部折叠</button></div>',
 		);
 	}
 
@@ -267,28 +386,48 @@ export function renderBacklinkHtml(
 			// 块不存在时没有文字可用，退回行号，保证仍然可点击。
 			const text = linkText.length > 0 ? linkText : `第 ${item.line + 1} 行`;
 
-			bodyParts.push('<li class="ref-item">');
+			// 折叠状态的键：报告 UUID + 序号。
+			// 不用文件路径——路径是绝对值，会把这个机器上的目录结构写进 DOM；
+			// 加上 UUID 是为了让不同块的反链面板之间不串折叠状态。
+			const itemKey = `${report.uuid}|${index}`;
+			const hasSubtree = item.subtree.length > 0;
+
+			bodyParts.push(`<li class="ref-item" data-key="${escapeHtml(itemKey)}">`);
 			if (item.blockPath.length > 0) {
 				bodyParts.push(`<div class="crumb">${escapeHtml(stripEmphasis(item.blockPath))}</div>`);
 			}
-			// 引用块标题缩进一级，体现它是面包屑最后那一级的子块。
-			bodyParts.push(
-				`<div class="title-line"><a class="ref" data-i="${index}" title="${escapeHtml(tooltip)}">${escapeHtml(stripEmphasis(text))}</a></div>`,
-			);
 
-			// 子树按层级缩进展示，让用户不用打开笔记就知道这句话在说什么。
-			for (const sub of item.subtree) {
-				const depthClass = `d${Math.min(Math.max(sub.depth, 0), 8)}`;
-				const bullet = sub.isListItem ? '<span class="bullet">•</span>' : '';
+			/*
+			 * 引用块标题缩进一级，体现它是面包屑最后那一级的子块。
+			 * 三角放在标题**左侧**，与 Tine 一致；没有子块时用等宽占位保持对齐。
+			 */
+			bodyParts.push('<div class="title-line">');
+			if (hasSubtree) {
 				bodyParts.push(
-					`<div class="sub ${depthClass}">${bullet}${escapeHtml(stripEmphasis(sub.text))}</div>`,
+					`<button class="toggle" type="button" aria-expanded="true" title="折叠 / 展开子块">▾</button>`,
 				);
+			} else {
+				bodyParts.push('<span class="toggle-placeholder"></span>');
 			}
+			bodyParts.push(
+				`<a class="ref" data-i="${index}" title="${escapeHtml(tooltip)}">${escapeHtml(stripEmphasis(text))}</a>`,
+			);
+			bodyParts.push('</div>');
 
-			if (item.subtreeOmitted > 0) {
-				bodyParts.push(
-					`<div class="sub-more">… 还有 ${item.subtreeOmitted} 行未展开</div>`,
-				);
+			if (hasSubtree) {
+				bodyParts.push('<div class="subtree">');
+				// 子树按层级缩进展示，让用户不用打开笔记就知道这句话在说什么。
+				for (const sub of item.subtree) {
+					const depthClass = `d${Math.min(Math.max(sub.depth, 0), 8)}`;
+					const bullet = sub.isListItem ? '<span class="bullet">•</span>' : '';
+					bodyParts.push(
+						`<div class="sub ${depthClass}">${bullet}${escapeHtml(stripEmphasis(sub.text))}</div>`,
+					);
+				}
+				if (item.subtreeOmitted > 0) {
+					bodyParts.push(`<div class="sub-more">… 还有 ${item.subtreeOmitted} 行未展开</div>`);
+				}
+				bodyParts.push('</div>');
 			}
 
 			bodyParts.push('</li>');

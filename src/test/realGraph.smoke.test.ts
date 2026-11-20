@@ -17,6 +17,8 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { buildExpandedNote } from '../core/expandNote';
+import { buildBlockPath } from '../core/blockPath';
+import { buildBacklinkReport, renderBacklinkReport } from '../core/backlinkReport';
 import { parseMarkdown } from '../core/blockParser';
 import { GraphIndex } from '../core/graphIndex';
 import { resolveBlock } from '../core/resolve';
@@ -182,5 +184,72 @@ describe.skipIf(!graphExists)('真实笔记库冒烟测试', () => {
 			const content = fs.readFileSync(filePath, 'utf8');
 			expect(() => parseMarkdown(filePath, content)).not.toThrow();
 		}
+	}, 60000);
+
+	it('反链报告在真实库上能按页面分组并给出面包屑', async () => {
+		const index = new GraphIndex();
+		await index.rebuild(listMarkdownFiles(GRAPH_ROOT), (filePath) => fs.promises.readFile(filePath, 'utf8'));
+
+		// 找引用次数最多的块来验证分组与路径。
+		const counts = new Map<string, number>();
+		for (const filePath of index.listFiles()) {
+			for (const hit of index.getParsedFile(filePath)?.references ?? []) {
+				counts.set(hit.uuid, (counts.get(hit.uuid) ?? 0) + 1);
+			}
+		}
+		const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+		expect(top).toBeDefined();
+		if (!top) {
+			return;
+		}
+
+		const report = buildBacklinkReport(index, top[0]);
+		expect(report.definitions.length).toBeGreaterThan(0);
+		expect(report.itemCount).toBeGreaterThan(1);
+		expect(report.groups.length).toBeGreaterThan(1);
+
+		// 所有条目都应当能定位到具体行，且分组计数自洽。
+		let sum = 0;
+		for (const group of report.groups) {
+			sum += group.count;
+			expect(group.items.length).toBe(group.count);
+			for (const item of group.items) {
+				expect(item.line).toBeGreaterThanOrEqual(0);
+				expect(item.path.length).toBeGreaterThan(0);
+			}
+		}
+		expect(sum).toBe(report.itemCount);
+
+		const text = renderBacklinkReport(report, { graphRoot: GRAPH_ROOT });
+		expect(text).toContain('反向链接');
+		// 面板不应出现裸 UUID 引用（面包屑已提供可读上下文）
+		expect(text).not.toMatch(/\(\([0-9a-f]{8}-/);
+	}, 60000);
+
+	it('真实库的块路径能生成有意义的面包屑（不含裸 ID）', async () => {
+		const index = new GraphIndex();
+		await index.rebuild(listMarkdownFiles(GRAPH_ROOT), (filePath) => fs.promises.readFile(filePath, 'utf8'));
+
+		let checked = 0;
+		let withPath = 0;
+		for (const filePath of index.listFiles()) {
+			const parsed = index.getParsedFile(filePath);
+			if (!parsed) {
+				continue;
+			}
+			for (let index2 = 0; index2 < parsed.blocks.length; index2++) {
+				const pathText = buildBlockPath(parsed, index2);
+				checked++;
+				if (pathText.length > 0) {
+					withPath++;
+					// 面包屑里绝不能出现 `id::` 的 UUID
+					expect(pathText).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+				}
+			}
+		}
+
+		expect(checked).toBeGreaterThan(1000);
+		// 真实笔记里大量块是嵌套的，应当有一半以上能算出祖先路径
+		expect(withPath).toBeGreaterThan(checked / 2);
 	}, 60000);
 });

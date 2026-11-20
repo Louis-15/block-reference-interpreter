@@ -50,6 +50,9 @@ export function readConfig() {
 		inlineRenderShowMissing: config.get<boolean>('inlineRender.showMissing', true),
 		renderStripHeadingMarks: config.get<boolean>('render.stripHeadingMarks', true),
 		showIndexNotification: config.get<boolean>('showIndexNotification', true),
+		backlinkCodeLens: config.get<boolean>('backlinks.codeLens', true),
+		backlinkItemsPerPage: config.get<number>('backlinks.itemsPerPage', 20),
+		backlinkPathDepth: config.get<number>('backlinks.pathDepth', 3),
 	};
 }
 
@@ -626,8 +629,13 @@ export class IndexService {
 		this.disposables.push(watcher);
 	}
 
-	/** 判断文件是否位于 include 范围内、且不在 exclude 范围内。 */
-	private isIndexedFile(filePath: string): boolean {
+	/**
+	 * 判断文件是否位于 include 范围内、且不在 exclude 范围内。
+	 *
+	 * 公开这个方法是必要的：反链 CodeLens 需要知道「当前文档是否参与索引」，
+	 * 否则在 `logseq/` 里的备份文件上也会显示反链，而那些文件根本不进索引。
+	 */
+	isIndexedFile(filePath: string): boolean {
 		if (!this.graphRoot) {
 			return false;
 		}

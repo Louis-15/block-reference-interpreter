@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "块引用解释器",
   "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -161,6 +161,10 @@
         "title": "块引用：查看块的反向链接"
       },
       {
+        "command": "blockReferenceInterpreter.showBacklinksPanel",
+        "title": "块引用：打开反链面板"
+      },
+      {
         "command": "blockReferenceInterpreter.rebuildIndex",
         "title": "块引用：重建索引"
       },
@@ -275,6 +279,25 @@
           "type": "boolean",
           "default": true,
           "description": "索引自动建立完成后，在右下角弹出提示。关掉后仅在索引为空（未找到任何笔记）时仍然警告。"
+        },
+        "tineBlockRef.backlinks.codeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "在被引用过的块上方显示「N 条链接引用」。只有真正被引用过的块才会显示，大多数笔记不会多出任何一行。点击可打开完整反链面板。"
+        },
+        "tineBlockRef.backlinks.itemsPerPage": {
+          "type": "number",
+          "default": 20,
+          "description": "反链面板中每个页面最多显示多少条引用。超出部分会汇总提示，避免单页引用过多时面板过长。",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "tineBlockRef.backlinks.pathDepth": {
+          "type": "number",
+          "default": 3,
+          "description": "反链面板中每个引用块显示的祖先层级数（面包屑层数）。层级太深时只保留最靠近引用的几级。",
+          "minimum": 0,
+          "maximum": 10
         }
       }
     }

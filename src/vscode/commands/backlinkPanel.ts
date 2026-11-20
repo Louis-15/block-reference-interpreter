@@ -21,8 +21,7 @@ import type { BacklinkReport } from '../../core/backlinkReport';
 import { readConfig } from '../indexService';
 import { normalizeUuid } from '../tools/common';
 import { openReadOnlyContent } from '../readOnlyContent';
-import { BacklinkPanelView } from '../backlinkPanelView';
-import { OPEN_BACKLINK_AT_COMMAND } from '../backlinkCommands';
+import { showBacklinkPanelView } from '../backlinkPanelView';import { OPEN_BACKLINK_AT_COMMAND } from '../backlinkCommands';
 import { openBacklinkAt } from './backlinkJump';
 import type { CommandDeps } from './expandCommands';
 
@@ -68,7 +67,7 @@ export async function showBacklinksPanel(deps: CommandDeps, uuid?: string): Prom
 	if (config.backlinkPanelStyle === 'text') {
 		await showAsTextPanel(deps, report, title, graphRoot, config.backlinkItemsPerPage);
 	} else {
-		BacklinkPanelView.show(title, report, graphRoot, config.backlinkItemsPerPage, (path, line) =>
+		showBacklinkPanelView(title, report, graphRoot, config.backlinkItemsPerPage, (path, line) =>
 			void openBacklinkAt(path, line),
 		);
 	}

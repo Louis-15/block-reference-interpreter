@@ -6,21 +6,30 @@
  * - 光标处引用：只展开光标下的那一个
  * - 按 UUID：给悬停预览里的「展开全文」链接用
  *
- * 输出统一走「新建未保存标签页」，不是写文件。
- * 这样既能随手看，也不会污染笔记库或留下垃圾文件。
+ * 输出统一走**网页面板**（不写文件、不留垃圾）：
+ * 每个块上方标出它来自哪篇笔记，点击即打开那篇笔记并跳到块的位置。
+ *
+ * 为什么从只读文本文档换成网页：
+ * 文本文档里的链接必须 Ctrl + 单击才响应（VS Code 硬规则），
+ * 而这里的来源链接是主要操作路径，必须能左键直接点。
  */
 
 import * as vscode from 'vscode';
 
 import { parseMarkdown } from '../../core/blockParser';
-import { buildExpandedNote } from '../../core/expandNote';
+import { renderExpandHtml } from '../../core/expandHtml';
+import { buildBlockExpandView, buildNoteExpandView } from '../../core/expandView';
 import type { GraphIndex } from '../../core/graphIndex';
-import { resolveBlock } from '../../core/resolve';
 import { readConfig } from '../indexService';
 import { getBlockTitle } from '../../core/render';
 import { locateReferenceAt } from '../../core/refLocator';
 import { normalizeUuid } from '../tools/common';
-import { openReadOnlyContent, type ReadOnlyContentProvider } from '../readOnlyContent';
+import { ReusableWebviewPanel } from '../reusableWebview';
+import { openBacklinkAt } from './backlinkJump';
+import type { ReadOnlyContentProvider } from '../readOnlyContent';
+
+/** 展开全文面板的 Webview 类型（同类面板会被复用）。 */
+const EXPAND_VIEW_TYPE = 'blockReferenceInterpreter.expandPanel';
 
 /** 命令实现依赖的能力，集中传入便于测试与解耦。 */
 export interface CommandDeps {
@@ -28,36 +37,27 @@ export interface CommandDeps {
 	ensureReady: () => Promise<void>;
 	getGraphRoot: () => string | undefined;
 	log: (message: string) => void;
-	/** 只读虚拟文档提供者：用于打开「关掉不会问保存」的标签页。 */
+	/** 只读虚拟文档提供者：反链的文本版面板仍用它。 */
 	contentProvider: ReadOnlyContentProvider;
 }
 
-/**
- * 把文本作为**只读**文档打开。
- *
- * 不用 untitled 文档的原因：关标签页时 VS Code 会弹「是否保存」，
- * 而扩展没有任何 API 能关掉那个提示。只读虚拟文档没有这个负担。
- */
-async function openAsDocument(deps: CommandDeps, title: string, content: string): Promise<void> {
-	const opened = await openReadOnlyContent(deps.contentProvider, title, content);
-	if (!opened) {
-		void vscode.window.showErrorMessage('无法打开内容窗口。请查看「块引用解释器」输出面板。');
-	}
-}
-
-/** 展开单个 UUID，返回可直接展示的文本。 */
-function expandOneBlock(index: GraphIndex, uuid: string): string {
-	const config = readConfig();
-	return resolveBlock(index, uuid, {
-		maxDepth: config.maxDepth,
-		maxChars: config.maxOutputChars,
-		hideProperties: config.hideProperties,
-		stripHeadingMarks: config.renderStripHeadingMarks,
-	}).text;
+/** 统一入口：打开一个展开面板。 */
+function showExpandPanel(
+	deps: CommandDeps,
+	title: string,
+	view: ReturnType<typeof buildBlockExpandView>,
+): void {
+	ReusableWebviewPanel.show(
+		EXPAND_VIEW_TYPE,
+		title,
+		(nonce) => renderExpandHtml(view, { nonce }).html,
+		(path, line) => void openBacklinkAt(path, line),
+	);
+	deps.log(`[展开] 已打开：${title}`);
 }
 
 /**
- * 命令：展开当前笔记为 AI 可读版。
+ * 命令：展开当前笔记为可读版。
  *
  * 用编辑器里的内容而不是磁盘内容：用户可能有未保存的修改，
  * 展开的应该是「他现在看到的这一版」。
@@ -70,7 +70,6 @@ export async function expandCurrentNote(deps: CommandDeps): Promise<void> {
 	}
 
 	await deps.ensureReady();
-	const index = deps.getIndex();
 	const document = editor.document;
 	const parsed = parseMarkdown(document.uri.fsPath, document.getText());
 
@@ -79,18 +78,25 @@ export async function expandCurrentNote(deps: CommandDeps): Promise<void> {
 		return;
 	}
 
-	const expanded = buildExpandedNote(
-		{ lines: parsed.lines, references: parsed.references },
+	const config = readConfig();
+	const view = buildNoteExpandView(
+		deps.getIndex(),
 		{
-			includeHeader: true,
-			fileName: document.fileName,
-			resolve: (uuid) => expandOneBlock(index, uuid),
+			path: document.uri.fsPath,
+			lines: parsed.lines,
+			references: parsed.references,
+		},
+		{
+			graphRoot: deps.getGraphRoot(),
+			maxDepth: config.maxDepth,
+			hideProperties: config.hideProperties,
+			stripHeading: config.renderStripHeadingMarks,
 		},
 	);
 
-	await openAsDocument(deps, `${document.fileName} 展开`, expanded);
+	showExpandPanel(deps, `${document.fileName} 展开`, view);
 	void vscode.window.showInformationMessage(
-		`已展开 ${parsed.references.length} 处块引用（只读标签页，不会提示保存）。`,
+		`已展开 ${parsed.references.length} 处块引用。`,
 	);
 }
 
@@ -145,10 +151,19 @@ export async function expandBlockById(deps: CommandDeps, uuid?: string): Promise
 	}
 
 	await deps.ensureReady();
-	const text = expandOneBlock(deps.getIndex(), normalized);
-	await openAsDocument(deps, `块 ${normalized}`, text);
+	const config = readConfig();
+	const view = buildBlockExpandView(deps.getIndex(), normalized, {
+		graphRoot: deps.getGraphRoot(),
+		maxDepth: config.maxDepth,
+		hideProperties: config.hideProperties,
+		stripHeading: config.renderStripHeadingMarks,
+	});
 
-	if (text.includes('未找到该 UUID')) {
+	showExpandPanel(deps, `块 ${normalized.slice(0, 8)}`, view);
+
+	// 块不存在时给一条明确提示：网页里也有警告，但标签页可能被切到后台。
+	const firstBlock = view.flow[0];
+	if (firstBlock && firstBlock.type === 'block' && !firstBlock.block.source) {
 		void vscode.window.showWarningMessage(`未找到块 ${normalized}，可能已被删除。`);
 	}
 }

@@ -10,6 +10,7 @@
  * 平台相关的部分（CSP nonce、消息通道）由 `vscode/backlinkPanelView.ts` 负责。
  */
 
+import { escapeHtml, safeJson, stripEmphasis } from './htmlText';
 import type { BacklinkReport } from './backlinkReport';
 import { toPageName } from './backlinkReport';
 
@@ -39,49 +40,6 @@ export interface BacklinkHtmlResult {
 	html: string;
 	/** 按索引对应的跳转目标。 */
 	targets: BacklinkHtmlTarget[];
-}
-
-/**
- * 去掉 Markdown 强调标记（`**粗体**`、`__粗体__`）。
- *
- * 真实笔记库里大量标题用 `**...**` 标重点，例如
- * `**3、导向意义层（动机揭示、符号象征直通）**`。
- * 面板是给人看的渲染结果，照搬星号会变成噪声——Tine 那边是渲染成粗体的。
- *
- * 只去掉标记、不加粗：面包屑本身已经是次要信息（灰色小字），
- * 再叠一层粗体反而抢了下面「块名链接」的注意力。
- */
-function stripEmphasis(text: string): string {
-	return text.replace(/\*\*|__/g, '');
-}
-
-/**
- * HTML 转义。
- *
- * 笔记标题里常见 `<`、`&`、引号（例如「动机揭示：信念由"人"承载」），
- * 不转义会破坏 DOM 结构，甚至被当成标签执行。
- */
-function escapeHtml(text: string): string {
-	return text
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;');
-}
-
-/**
- * 把数据安全地嵌进 `<script>` 标签。
- *
- * 直接把 JSON 塞进脚本里，正文若含 `</script>` 会提前闭合标签；
- * `<` `>` `&` 转成 unicode 转义后就不会被 HTML 解析器误读，
- * 而 JSON 语义完全不变。
- */
-function safeJson(value: unknown): string {
-	return JSON.stringify(value)
-		.replace(/</g, '\\u003c')
-		.replace(/>/g, '\\u003e')
-		.replace(/&/g, '\\u0026');
 }
 
 /** 把绝对路径转成相对图谱根的显示路径。 */

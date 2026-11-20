@@ -1,0 +1,14 @@
+src/**
+node_modules/**
+.vscode/**
+docs/**
+**/*.map
+tsconfig.json
+vitest.config.ts
+esbuild.mjs
+**/*.test.ts
+**/fixtures/**
+.gitignore
+_ref_obsidian/**
+_ref_tine/**
+package-lock.json

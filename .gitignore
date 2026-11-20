@@ -1,0 +1,15 @@
+node_modules/
+dist/
+out/
+*.vsix
+.vscode-test/
+
+# 参考仓库（如果需要重新克隆，不进版本库）
+_ref_obsidian/
+_ref_tine/
+_ref_*/
+
+# 临时产物
+*.log
+.DS_Store
+Thumbs.db

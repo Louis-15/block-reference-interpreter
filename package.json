@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "块引用解释器",
   "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -280,10 +280,20 @@
           "default": true,
           "description": "索引自动建立完成后，在右下角弹出提示。关掉后仅在索引为空（未找到任何笔记）时仍然警告。"
         },
-        "tineBlockRef.backlinks.codeLens": {
-          "type": "boolean",
-          "default": true,
-          "description": "在被引用过的块上方显示「N 条链接引用」。只有真正被引用过的块才会显示，大多数笔记不会多出任何一行。点击可打开完整反链面板。"
+        "tineBlockRef.backlinks.style": {
+          "type": "string",
+          "enum": [
+            "inline",
+            "lens",
+            "off"
+          ],
+          "enumDescriptions": [
+            "块行尾显示「🔗 N」徽章，点击打开反链面板。与 Tine 的表现一致（默认）",
+            "块上方单独一行显示「N 条链接引用」。若 VS Code 关掉了 InlayHint（editor.inlayHints.enabled）可用这个",
+            "不显示任何反链标记，仍可用命令查看"
+          ],
+          "default": "inline",
+          "description": "反链计数在编辑器里的呈现方式。只有真正被引用过的块才会显示，大多数笔记不会多出任何东西。"
         },
         "tineBlockRef.backlinks.itemsPerPage": {
           "type": "number",

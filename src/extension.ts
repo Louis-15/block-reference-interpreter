@@ -16,7 +16,8 @@ import {
 	type CommandDeps,
 } from './vscode/commands/expandCommands';
 import { showBacklinksPanel } from './vscode/commands/backlinkPanel';
-import { BacklinkLensProvider, SHOW_BACKLINKS_PANEL_COMMAND } from './vscode/backlinkLens';
+import { BacklinkInlayProvider, SHOW_BACKLINKS_PANEL_COMMAND } from './vscode/backlinkInlay';
+import { BacklinkLensProvider } from './vscode/backlinkLens';
 import { BlockReferenceHoverProvider } from './vscode/hoverProvider';
 import { IndexService, readConfig } from './vscode/indexService';
 import { BlockReferenceInlineRenderer, describeInlineRenderer } from './vscode/inlineRenderer';
@@ -63,7 +64,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	registerCommands(context, indexService, deps, output);
 	registerHover(context, deps);
 	registerInlineRenderer(context, indexService, deps, log);
-	registerBacklinkLens(context, indexService, deps, log);
+	registerBacklinkMarkers(context, indexService, deps, log);
 	registerLanguageModelTools(context, indexService, log);
 
 	// 后台初始化：不阻塞激活，用到索引的功能会自己 await。
@@ -170,57 +171,68 @@ function registerInlineRenderer(
 }
 
 /**
- * 注册反链 CodeLens。
+ * 注册反链标记（右侧徽章或块上方 CodeLens）。
  *
  * 这是「像 Tine 那样在页面里看到反链」的落地方式：
- * 每个被引用过的块上方会出现一行「N 条链接引用」，点击打开完整面板。
+ * 默认在每个被引用过的块**行尾**显示 `🔗 2`，点击打开完整面板。
  */
-function registerBacklinkLens(
+function registerBacklinkMarkers(
 	context: vscode.ExtensionContext,
 	indexService: IndexService,
 	deps: CommandDeps,
 	log: (message: string) => void,
 ): void {
-	const provider = new BacklinkLensProvider({
+	const anchorDeps = {
 		getIndex: deps.getIndex,
 		ensureReady: deps.ensureReady,
-		isIndexedFile: (filePath) => indexService.isIndexedFile(filePath),
-		isEnabled: () => readConfig().backlinkCodeLens,
+		isIndexedFile: (filePath: string) => indexService.isIndexedFile(filePath),
 		log,
-	});
-	context.subscriptions.push(provider);
+	};
+
+	const inlay = new BacklinkInlayProvider(anchorDeps, () => readConfig().backlinkStyle === 'inline');
+	const lens = new BacklinkLensProvider(anchorDeps, () => readConfig().backlinkStyle === 'lens');
+	context.subscriptions.push(inlay, lens);
 
 	context.subscriptions.push(
-		vscode.languages.registerCodeLensProvider({ language: 'markdown', scheme: 'file' }, provider),
+		vscode.languages.registerInlayHintsProvider({ language: 'markdown', scheme: 'file' }, inlay),
+		vscode.languages.registerCodeLensProvider({ language: 'markdown', scheme: 'file' }, lens),
 	);
 
+	const refreshAll = (): void => {
+		inlay.refresh();
+		lens.refresh();
+	};
+
 	// 索引变了必须主动刷新：引用来自**别的文件**，当前文档版本号不变，
-	// 不刷新的话用户刚在别处加了一条引用，这边 CodeLens 还是旧数字。
-	context.subscriptions.push(indexService.onDidChange(() => provider.refresh()));
+	// 不刷新的话用户刚在别处加了一条引用，这边还是旧数字。
+	context.subscriptions.push(indexService.onDidChange(refreshAll));
 
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration((event) => {
 			if (event.affectsConfiguration('tineBlockRef.backlinks')) {
-				provider.refresh();
+				refreshAll();
 			}
 		}),
 	);
 
 	// 文档关闭时清缓存，避免同一路径重开拿到旧数据。
 	context.subscriptions.push(
-		vscode.workspace.onDidCloseTextDocument((document) => provider.forgetDocument(document.uri)),
+		vscode.workspace.onDidCloseTextDocument((document) => {
+			inlay.forgetDocument(document.uri);
+			lens.forgetDocument(document.uri);
+		}),
 	);
 
 	// 索引就绪后补刷新一次：激活时索引还没建好，首轮查询会全部落空。
 	void deps
 		.ensureReady()
-		.then(() => provider.refresh())
+		.then(refreshAll)
 		.catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : String(error);
-			log(`[错误] 反链 CodeLens 首轮刷新失败：${message}`);
+			log(`[错误] 反链标记首轮刷新失败：${message}`);
 		});
 
-	log('[反链] 已注册 CodeLens（被引用的块上方显示「N 条链接引用」）');
+	log('[反链] 已注册反链标记（块行尾显示 🔗 N，点击打开反链面板）');
 }
 
 /**

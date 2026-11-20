@@ -309,15 +309,22 @@ code --list-extensions --show-versions | Select-String block-reference
 
 ### 在编辑器里直接看到
 
-每个**被引用过**的块上方会出现一行：
+每个**被引用过**的块，所在行**行尾**会出现一个徽章：
 
 ```
-$(references) 2 条链接引用
+- 《星落凝成糖》夜昙（黑化前）  🔗 2
+    id:: 6780f110-d8e8-489f-be72-d2b3dbbc5668
 ```
 
-点它 → 打开反链面板。没被引用过的块不会多出任何一行（真实库里 1164 篇笔记只有 283 篇会出现这行）。
+点它 → 打开反链面板。鼠标悬停会显示完整说明。
 
-这行也可以关掉：设置 `tineBlockRef.backlinks.codeLens` = `false`。
+没被引用过的块不会多出任何东西（真实库里 1164 篇笔记只有 283 篇会出现徽章）。
+
+> 徽章用的是 VS Code 的 InlayHint 机制，受全局设置 `editor.inlayHints.enabled` 控制。
+> 如果你把它关了、看不到徽章，把 `tineBlockRef.backlinks.style` 改成 `lens`
+> 就会改用「块上方独立一行」的方式显示。
+>
+> 三个可选值：`inline`（行尾徽章，默认）/ `lens`（上方一行）/ `off`（不显示）。
 
 ### 反链面板长什么样
 
@@ -353,7 +360,7 @@ $(references) 2 条链接引用
 | 块引用：查看光标处块引用的反向链接 | **跳转**：QuickPick 列表，选中直接跳到那行 |
 | 块引用：打开反链面板 | **通读**：一次看到全部引用及其上下文 |
 
-CodeLens 点击打开的是「面板」，因为你看的反链往往是「都有谁用了我」这种全局问题，不是「跳到某一个」。
+行尾徽章点击打开的是「面板」，因为你看的反链往往是「都有谁用了我」这种全局问题，不是「跳到某一个」。
 
 ### AI 也能查
 
@@ -372,7 +379,7 @@ AI 会调用 `#blockBacklinks`，拿到和面板完全相同的分组与路径�
 | 块引用：按 UUID 展开单个块 | 已知 UUID，直接查 |
 | 块引用：查看光标处块引用的反向链接 | 想知道这条内容被谁引用，并跳过去 |
 | 块引用：查看块的反向链接 | 手动输入 UUID 查，并跳转 |
-| 块引用：打开反链面板 | 通读完整反链（CodeLens 点击的就是它） |
+| 块引用：打开反链面板 | 通读完整反链（点行尾徽章打开的就是它） |
 | 块引用：重建索引 | 兜底。日常不需要，索引会自己维护 |
 | 块引用：选择 Tine 图谱目录 | 自动找不到笔记库时，或想在多个笔记库间切换 |
 | 块引用：显示日志 | 排查问题 |
@@ -483,7 +490,7 @@ AI 会调用 `#blockBacklinks`，拿到和面板完全相同的分组与路径�
 | `tineBlockRef.render.stripHeadingMarks` | `true` | 渲染时去掉标题的 `#` 标记 |
 | `tineBlockRef.hoverPreviewLines` | `6` | 悬停预览行数 |
 | `tineBlockRef.showIndexNotification` | `true` | 索引建立完成后右下角提示 |
-| `tineBlockRef.backlinks.codeLens` | `true` | 在被引用过的块上方显示「N 条链接引用」 |
+| `tineBlockRef.backlinks.style` | `inline` | 反链标记呈现：`inline` 行尾徽章 / `lens` 上方一行 / `off` 不显示 |
 | `tineBlockRef.backlinks.itemsPerPage` | `20` | 反链面板中每页最多显示多少条引用 |
 | `tineBlockRef.backlinks.pathDepth` | `3` | 反链面板中面包屑保留的祖先层级数 |
 

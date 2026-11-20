@@ -50,7 +50,7 @@ export function readConfig() {
 		inlineRenderShowMissing: config.get<boolean>('inlineRender.showMissing', true),
 		renderStripHeadingMarks: config.get<boolean>('render.stripHeadingMarks', true),
 		showIndexNotification: config.get<boolean>('showIndexNotification', true),
-		backlinkCodeLens: config.get<boolean>('backlinks.codeLens', true),
+		backlinkStyle: config.get<string>('backlinks.style', 'inline'),
 		backlinkItemsPerPage: config.get<number>('backlinks.itemsPerPage', 20),
 		backlinkPathDepth: config.get<number>('backlinks.pathDepth', 3),
 	};

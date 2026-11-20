@@ -39,9 +39,10 @@ export interface HoverContentConfig {
  * 用户点过去就能看到，再挂一个反链入口属于重复信息。
  * 反向链接功能本身保留为独立命令（命令面板可调）。
  *
- * 为什么不再手写 `（Ctrl+Click）`：
- * VS Code 会为 DocumentLink 自动追加 `(ctrl + 单击)` 提示。
- * 自己再写一遍就变成两行重复说明。
+ * 为什么不做 Ctrl+Click（DocumentLink）：
+ * VS Code 会为 DocumentLink 自动追加 `(ctrl + 单击)` 提示，
+ * 而按钮已经就在悬停框最下方、鼠标稍微下移即可点击，
+ * 再多一条需要记快捷键的路径反而多余。
  */
 function buildExpandLink(uuid: string): string {
 	return `[展开全文](command:blockReferenceInterpreter.expandBlockById?${encodeCommandArgs([uuid])})`;

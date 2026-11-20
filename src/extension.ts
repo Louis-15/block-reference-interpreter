@@ -15,7 +15,6 @@ import {
 	showBacklinksAtCursor,
 	type CommandDeps,
 } from './vscode/commands/expandCommands';
-import { BlockReferenceDocumentLinkProvider } from './vscode/documentLinkProvider';
 import { BlockReferenceHoverProvider } from './vscode/hoverProvider';
 import { IndexService } from './vscode/indexService';
 import { BlockReferenceInlineRenderer, describeInlineRenderer } from './vscode/inlineRenderer';
@@ -61,7 +60,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	registerCommands(context, indexService, deps, output);
 	registerHover(context, deps);
-	registerDocumentLinks(context, deps);
 	registerInlineRenderer(context, indexService, deps, log);
 	registerLanguageModelTools(context, indexService, log);
 
@@ -129,26 +127,6 @@ function registerHover(context: vscode.ExtensionContext, deps: CommandDeps): voi
 	// 文档关闭时释放该文档的扫描缓存，避免长会话里缓存越积越多。
 	context.subscriptions.push(
 		vscode.workspace.onDidCloseTextDocument((document) => provider.forget(document)),
-	);
-}
-
-/**
- * 注册文档链接：让渲染后的块引用可以 Ctrl+Click 展开全文。
- *
- * 为什么用 DocumentLink 而不是别的：
- * 装饰器的 attachment 是纯视觉元素，VS Code 不提供点击回调；
- * DocumentLink 是唯一能"把一个文本范围变成可点击链接"的官方 API，
- * 而且它的交互方式与用户对「链接」的预期一致（Ctrl+Click）。
- *
- * **刻意不注册 DefinitionProvider**：
- * VS Code 里 Ctrl+Click 会同时触发 DocumentLink 与 DefinitionProvider，
- * 两处都注册会让一次点击打开两个标签页（展开内容 + 源笔记）。
- * 这里只保留「展开全文」这一个行为，与悬停里的按钮保持一致。
- */
-function registerDocumentLinks(context: vscode.ExtensionContext, deps: CommandDeps): void {
-	const provider = new BlockReferenceDocumentLinkProvider(deps.getIndex, deps.ensureReady);
-	context.subscriptions.push(
-		vscode.languages.registerDocumentLinkProvider([{ language: 'markdown' }], provider),
 	);
 }
 

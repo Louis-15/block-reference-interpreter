@@ -17,6 +17,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { buildExpandedNote } from '../core/expandNote';
+import { parseMarkdown } from '../core/blockParser';
 import { GraphIndex } from '../core/graphIndex';
 import { resolveBlock } from '../core/resolve';
 
@@ -139,5 +140,47 @@ describe.skipIf(!graphExists)('真实笔记库冒烟测试', () => {
 		// 原始行必须原样保留，不能被改写
 		const originalFirstLine = target.parsed.lines[0] ?? '';
 		expect(expanded).toContain(originalFirstLine);
+	}, 60000);
+
+	it('所有合法的 id:: 行都能被识别为块（防回归）', async () => {
+		const files = listMarkdownFiles(GRAPH_ROOT);
+		const index = new GraphIndex();
+		const stats = await index.rebuild(files, (filePath) => fs.promises.readFile(filePath, 'utf8'));
+
+		// 严格匹配合法 UUID：损坏的 ID（如含点号的 `65cc96fb-1.a7-...`）不计入，
+		// 它们本来就不该被解析成块。
+		const strictIdLine =
+			/^\s*id::\s*[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}/;
+
+		let idLineCount = 0;
+		for (const filePath of files) {
+			const content = await fs.promises.readFile(filePath, 'utf8');
+			for (const line of content.split('\n')) {
+				if (strictIdLine.test(line)) {
+					idLineCount++;
+				}
+			}
+		}
+
+		// 允许少量差异：代码块里出现的 id:: 示例行会被正确跳过。
+		// 但差异不能大——实测曾因「id:: 与块首行同缩进」漏掉 12 个 ID，
+		// 直接导致 8 个块引用变成假性悬空。
+		expect(stats.idBlockCount).toBeGreaterThanOrEqual(idLineCount - 5);
+
+		console.log(`[ID 完整性] id:: 行 ${idLineCount} 条 / 识别为块 ${stats.idBlockCount} 个`);
+	}, 60000);
+
+	it('无块文件（只有页面属性）不会报错', () => {
+		const files = listMarkdownFiles(GRAPH_ROOT);
+		const emptyish = files.filter((filePath) => {
+			const content = fs.readFileSync(filePath, 'utf8');
+			return content.trim().length > 0 && !content.split('\n').some((line) => /^[ \t]*-/.test(line));
+		});
+
+		// 这类文件存在是正常的（只有 tags:: 的空页面），解析器应产出 0 个块而不是抛错。
+		for (const filePath of emptyish) {
+			const content = fs.readFileSync(filePath, 'utf8');
+			expect(() => parseMarkdown(filePath, content)).not.toThrow();
+		}
 	}, 60000);
 });

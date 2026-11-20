@@ -90,6 +90,13 @@ export class IndexService {
 	private async resolveGraphRoot(): Promise<string | undefined> {
 		const configured = readConfig().graphRoot;
 		if (configured) {
+			// 配置了但目录不存在时明确告知，避免用户对着空索引干等。
+			if (!nodePathProbe.isDirectory(configured)) {
+				this.log(
+					`[警告] 配置的图谱目录不存在：${configured}\n` +
+						`        请执行命令「块引用：选择 Tine 图谱目录」重新指定。`,
+				);
+			}
 			return configured;
 		}
 
@@ -162,6 +169,16 @@ export class IndexService {
 		const startedAt = Date.now();
 		try {
 			const files = await this.listMarkdownFiles(this.graphRoot);
+
+			// 一个文件都没找到，几乎一定是路径配错了，而不是"笔记库恰好为空"。
+			// 不提示的话，用户只会看到工具报「未找到块」，完全不知道是索引没建起来。
+			if (files.length === 0) {
+				this.log(
+					`[警告] 图谱根目录下没有匹配到任何 Markdown 文件：${this.graphRoot}\n` +
+						`        请确认该目录下有 pages/ 或 journals/，或在设置中修改 tineBlockRef.graphRoot。`,
+				);
+			}
+
 			const stats = await this.index.rebuild(files, (filePath) => readFileText(filePath));
 			this.log(
 				`[索引] 完成：文件 ${stats.fileCount} / 块 ${stats.blockCount} / 带 ID ${stats.idBlockCount} / ` +

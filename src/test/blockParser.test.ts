@@ -30,6 +30,18 @@ describe('splitLines', () => {
 	it('保留空行', () => {
 		expect(splitLines('a\n\nb')).toEqual(['a', '', 'b']);
 	});
+
+	it('剥离 UTF-8 BOM，否则首块会丢失', () => {
+		expect(splitLines('\uFEFF- 第一个块\n- 第二个块')).toEqual(['- 第一个块', '- 第二个块']);
+	});
+
+	it('BOM + CRLF 同时存在也能处理', () => {
+		expect(splitLines('\uFEFF- 块\r\n- 块2')).toEqual(['- 块', '- 块2']);
+	});
+
+	it('正文中间的 BOM 字符不受影响（只处理行首）', () => {
+		expect(splitLines('a\uFEFFb')).toEqual(['a\uFEFFb']);
+	});
 });
 
 describe('parseMarkdown 块树', () => {
@@ -110,6 +122,48 @@ describe('parseMarkdown 块 ID 归属', () => {
 		const parsed = parseMarkdown('x.md', content);
 		expect(parsed.blocks[0]?.id).toBe('11111111-1111-1111-1111-111111111111');
 	});
+
+	it('id:: 与块首行完全同缩进也能归属（真实库中存在 12 例）', () => {
+		// 这类写法不常见但确实存在于 Tine 导出的笔记里：
+		// `id::` 顶格，与 `- ` 首行缩进相同。
+		// 若要求「缩进必须更深」，这些 ID 会全部丢失，引用它们的块就全成了悬空引用。
+		const content = [
+			'- # 1 文字、字母、数字',
+			'id:: 67921802-cf13-4d90-91aa-6c536b6c10e8',
+			'- # 2 视觉符号',
+		].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		expect(parsed.blocks[0]?.id).toBe('67921802-cf13-4d90-91aa-6c536b6c10e8');
+		// ID 不能被下一个块抢走
+		expect(parsed.blocks[1]?.id).toBeUndefined();
+	});
+
+	it('带缩进的块，其 id:: 同缩进也能归属', () => {
+		const content = [
+			'- 父块',
+			'\t- 子块',
+			'\tid:: 22222222-2222-2222-2222-222222222222',
+		].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		const child = parsed.blocks.find((block) => block.startLine === 1);
+		expect(child?.id).toBe('22222222-2222-2222-2222-222222222222');
+		expect(parsed.blocks[0]?.id).toBeUndefined();
+	});
+
+	it('id:: 缩进比块首行更浅时不归属任何块', () => {
+		const content = [
+			'\t- 缩进块',
+			'id:: 33333333-3333-3333-3333-333333333333',
+		].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		expect(parsed.blocks[0]?.id).toBeUndefined();
+	});
+
+	it('代码块里顶格的 id:: 仍然不被解析', () => {
+		const content = ['- 示例', '\t```', 'id:: 44444444-4444-4444-4444-444444444444', '\t```'].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		expect(parsed.blocksById.size).toBe(0);
+	});
 });
 
 describe('parseMarkdown 边界情况', () => {
@@ -118,6 +172,13 @@ describe('parseMarkdown 边界情况', () => {
 		const parsed = parseMarkdown('x.md', content);
 		expect(parsed.blocks).toHaveLength(1);
 		expect(parsed.blocks[0]?.startLine).toBe(4);
+	});
+
+	it('带 BOM 的文件首块不会丢失', () => {
+		const content = `\uFEFF- # 标题\r\n  id:: 55555555-5555-5555-5555-555555555555\r\n\t- 子块`;
+		const parsed = parseMarkdown('x.md', content);
+		expect(parsed.blocks).toHaveLength(2);
+		expect(parsed.blocksById.get('55555555-5555-5555-5555-555555555555')).toHaveLength(1);
 	});
 
 	it('页面属性行不产生块', () => {
@@ -165,6 +226,38 @@ describe('parseMarkdown 边界情况', () => {
 		const parsed = parseMarkdown('x.md', content);
 		expect(parsed.blocks).toHaveLength(2);
 		expect(parsed.blocks[0]?.ownLines.length).toBeGreaterThanOrEqual(3);
+	});
+
+	it('隐式块：文件首行没有 `- ` 前缀也能携带 ID', () => {
+		// 真实库中存在这种写法（Tine 导出的边缘情况）：
+		// 块首行是顶格标题，没有列表标记，属性也顶格。
+		// 不支持的话，这个 ID 会丢失，所有引用它的地方都变成悬空引用。
+		const content = [
+			'# 1 大义、天理',
+			'collapsed:: true',
+			'id:: 66b1f836-d1de-4804-a72f-80791e7db864',
+			'\t- 孟子：民为贵',
+		].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+
+		expect(parsed.blocksById.get('66b1f836-d1de-4804-a72f-80791e7db864')).toHaveLength(1);
+		// 隐式块是根块，缩进的列表行是它的子块
+		const root = parsed.blocks.find((block) => block.startLine === 0);
+		expect(root?.parent).toBe(-1);
+		expect(root?.children).toHaveLength(1);
+	});
+
+	it('属性行与块首行同缩进时归属该块', () => {
+		const content = ['- 块内容', 'collapsed:: true'].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		expect(parsed.blocks[0]?.ownLines).toContain('collapsed:: true');
+	});
+
+	it('缩进相同但非属性的正文不并入块', () => {
+		const content = ['- 块内容', '这是一段普通正文', '- 下一个块'].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		expect(parsed.blocks[0]?.ownLines).toHaveLength(1);
+		expect(parsed.blocks).toHaveLength(2);
 	});
 
 	it('水平线不产生块', () => {

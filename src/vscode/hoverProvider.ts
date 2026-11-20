@@ -17,6 +17,7 @@
 
 import * as vscode from 'vscode';
 
+import { splitLines } from '../core/blockParser';
 import type { GraphIndex } from '../core/graphIndex';
 import { detectGraphRoot, isGraphContentFile, nodePathProbe } from '../core/graphLocator';
 import { findHoverTarget } from '../core/hoverLocator';
@@ -133,7 +134,9 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 			return cached.references;
 		}
 
-		const references = scanReferences(document.getText().split(/\r?\n/));
+		// 用与解析器相同的切行逻辑：统一处理 CRLF 与 BOM，
+		// 否则行号/列号可能与索引里的解析结果错位。
+		const references = scanReferences(splitLines(document.getText()));
 		this.cache.set(key, { version: document.version, references });
 
 		// 简单上限：避免长期打开大量文档导致缓存膨胀。

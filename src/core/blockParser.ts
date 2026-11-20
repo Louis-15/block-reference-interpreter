@@ -36,6 +36,13 @@ const BLOCK_ID_REGEX =
  */
 const PAGE_PROPERTY_REGEX = /^\s*[^-\s].*?::\s*.*$/;
 
+/**
+ * 块属性行（`collapsed::`、`tine.author::` 等）。
+ *
+ * 只认「字母数字下划线短横 + `::`」，避免把正文里的中文冒号误判成属性。
+ */
+const BLOCK_PROPERTY_REGEX = /^\s*[A-Za-z0-9_-]+::(?:\s|$)/;
+
 export interface ParseOptions {
 	/** 制表位宽度，默认 4。必须与编辑器/Tine 设置一致，否则层级会错。 */
 	tabSize?: number;
@@ -43,7 +50,22 @@ export interface ParseOptions {
 
 /** 按 LF 切分并剥离每行尾部 CR（兼容 CRLF 文件）。 */
 export function splitLines(content: string): string[] {
-	return content.split('\n').map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line));
+	const lines = content.split('\n').map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line));
+
+	/**
+	 * 剥掉 UTF-8 BOM。
+	 *
+	 * BOM 是不可见字符，但它会让首行变成 `\uFEFF- xxx`，
+	 * 于是列表行正则匹配失败、**整个第一个块丢失**，
+	 * 表现为「文件里的块 ID 找不到」这种极难定位的问题。
+	 * 当前笔记库没有 BOM 文件，但用户随时可能从别处导入。
+	 */
+	const first = lines[0];
+	if (first !== undefined && first.charCodeAt(0) === 0xfeff) {
+		lines[0] = first.slice(1);
+	}
+
+	return lines;
 }
 
 /**
@@ -179,7 +201,41 @@ export function parseMarkdown(path: string, content: string, options: ParseOptio
 
 		// 以下都是非列表行。
 		if (!top || topIndex < 0) {
-			// 第一个块出现之前的内容（frontmatter/page properties 之外）直接忽略。
+			/**
+			 * 文件开头、尚未打开任何块时的非列表行。
+			 *
+			 * 支持「无 `- ` 前缀的隐式块」：真实库里有文件把块首行写成顶格标题：
+			 *
+			 * ```
+			 * # 1 大义、天理
+			 * collapsed:: true
+			 * id:: 66b1f836-...
+			 * ```
+			 *
+			 * 这类块没有任何列表标记，若直接跳过，它的 `id::` 会丢失，
+			 * 所有引用它的地方都变成悬空引用（该 UUID 在真实库中被引用 13 次）。
+			 *
+			 * 只在「栈为空」时创建，所以影响范围仅限文件开头，
+			 * 不会把正文中间的段落误判成块。
+			 */
+			if (isBlankLine(line)) {
+				continue;
+			}
+
+			const implicitIndent = lineIndentColumns(line, tabSize);
+			const implicitIndex = blocks.length;
+			blocks.push({
+				startLine: lineNumber,
+				endLine: lineNumber,
+				indent: implicitIndent,
+				ownLines: [line],
+				parent: -1,
+				children: [],
+			});
+			ownEndLines.push(lineNumber);
+			stack.push(implicitIndex);
+			blockAtStartLine.set(lineNumber, implicitIndex);
+			pendingBlanks = [];
 			continue;
 		}
 
@@ -190,24 +246,54 @@ export function parseMarkdown(path: string, content: string, options: ParseOptio
 
 		const indent = lineIndentColumns(line, tabSize);
 
-		// 缩进不够：不属于当前块，也不属于任何祖先（否则它们也早该缩进更深）。
-		if (indent <= top.indent) {
-			pendingBlanks = [];
-			continue;
-		}
-
-		// 块 ID：只有缩进严格大于块首行时才归属该块，避免把子块的 id 抢过来。
+		/**
+		 * 块 ID 归属。
+		 *
+		 * **缩进可以等于块首行的缩进**，不能要求严格大于。
+		 * 实测笔记库里有 12 个文件写成：
+		 *
+		 * ```
+		 * - # 1 文字、字母、数字
+		 * id:: 67921802-cf13-4d90-91aa-6c536b6c10e8
+		 * ```
+		 *
+		 * `id::` 完全顶格。按「必须更深」处理会把这些 ID 全部丢掉，
+		 * 于是所有引用它们的块都变成「悬空引用」——这是最容易误判成
+		 * 「块已被删除」的一类假故障，必须支持。
+		 *
+		 * 判定提前到「缩进不够就跳过」之前，否则等于号情况永远走不到这里。
+		 */
 		const idMatch = line.match(BLOCK_ID_REGEX);
-		if (idMatch && idMatch[1]) {
-			// 同一块出现多个 id:: 时保留第一个，后面的忽略（实测库中无此情况）。
+		if (idMatch && idMatch[1] && indent >= top.indent) {
+			// 同一块出现多个 id:: 时保留第一个，后面的忽略。
 			if (!top.id) {
 				top.id = idMatch[1].toLowerCase();
 			}
 			appendToCurrent(topIndex, line, lineNumber);
-			const openingFence = getOpeningFenceState(line, tabSize);
-			if (openingFence) {
-				fence = openingFence;
+			continue;
+		}
+
+		// 缩进不够：不属于当前块，也不属于任何祖先（否则它们也早该缩进更深）。
+		// 这里仍用严格小于判定：缩进等于块首行的普通正文不应并入块内容。
+		if (indent <= top.indent) {
+			/**
+			 * 例外：属性行允许与块首行同缩进。
+			 *
+			 * 真实库中存在这种写法（块首行顶格、属性也顶格）：
+			 * ```
+			 * # 1 大义、天理
+			 * collapsed:: true
+			 * id:: 66b1f836-...
+			 * ```
+			 * 若不放宽，`collapsed::` 被丢弃（影响小），
+			 * 但同一模式下的其他属性也会一起丢，容易演变成难查的数据缺失。
+			 * 只对「字母数字 + `::`」形态放宽，正文不会被误并。
+			 */
+			if (indent === top.indent && BLOCK_PROPERTY_REGEX.test(line)) {
+				appendToCurrent(topIndex, line, lineNumber);
+				continue;
 			}
+			pendingBlanks = [];
 			continue;
 		}
 

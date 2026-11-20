@@ -18,6 +18,7 @@
 
 import * as vscode from 'vscode';
 
+import { splitLines } from '../core/blockParser';
 import type { GraphIndex } from '../core/graphIndex';
 import { detectGraphRoot, isGraphContentFile, nodePathProbe } from '../core/graphLocator';
 import { scanReferences } from '../core/refScanner';
@@ -198,7 +199,6 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 			this.clear(editor);
 			return;
 		}
-
 		const index = this.getIndex();
 		const items: RenderItem[] = [];
 
@@ -298,7 +298,9 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 			return cached.references;
 		}
 
-		const references = scanReferences(document.getText().split(/\r?\n/));
+		// 用与解析器相同的切行逻辑：统一处理 CRLF 与 BOM，
+		// 否则行号/列号可能与索引里的解析结果错位。
+		const references = scanReferences(splitLines(document.getText()));
 		this.cache.set(key, { version: document.version, references });
 
 		if (this.cache.size > 50) {

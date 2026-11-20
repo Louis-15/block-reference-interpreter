@@ -58,7 +58,7 @@ Tine 和 Logseq 用 `((uuid))` 引用其他块。对人没问题，因为软件�
 
 **方式一：从 Release 安装（推荐）**
 
-1. 到 [Releases](../../releases) 页面下载最新的 `block-reference-interpreter-x.y.z.vsix`
+1. 到 [Releases](https://github.com/Louis-15/block-reference-interpreter/releases) 页面下载 `block-reference-interpreter-0.2.2.vsix`
 2. `Ctrl+Shift+P` → **Extensions: Install from VSIX...** → 选中下载的文件
 3. `Ctrl+Shift+P` → **Reload Window**
 
@@ -88,6 +88,8 @@ code --install-extension block-reference-interpreter-*.vsix
 ### 文件从哪来
 
 Release 页面提供一个单独的压缩包 **`notebook-instructions.zip`**，解压到**笔记库根目录**即可，它会自动展开成下面的目录结构。
+
+下载直链（始终指向最新版）：`https://github.com/Louis-15/block-reference-interpreter/releases/latest/download/notebook-instructions.zip`
 
 也可以从仓库的 `templates/github/instructions/` 里复制同名文件，手动放到下面这个位置。
 

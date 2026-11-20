@@ -155,11 +155,22 @@ code --list-extensions --show-versions | Select-String block-reference
 
 ## 2. 索引是否建起来
 
-打开笔记库工作区，`Ctrl+Shift+P` → **块引用：重建索引**。
+**不需要手动做任何事。** 打开笔记库文件夹时，插件会自动识别并建立索引，完成后右下角弹出提示：
 
-**期望**：右下角提示「索引完成：N 个文件 / M 个带 ID 块 / K 处引用」。
+```
+块引用索引已建立：1164 个文件 / 1263 个带 ID 块 / 1423 处引用（0.4s）
+```
 
-如果提示 0 个文件，说明图谱目录没识别对 → 运行 **块引用：选择 Tine 图谱目录**，选那个同时含 `pages/` 和 `logseq/` 的文件夹。
+看到这条提示就说明索引正常。
+
+**如果没看到提示**，按顺序排查：
+
+1. 打开「块引用：显示日志」，看是否记录了 `[索引] 图谱根目录：...`。没有记录说明没探测到图谱。
+2. 运行 **块引用：选择 Tine 图谱目录**，选那个同时含 `pages/` 和 `logseq/` 的文件夹。
+3. 提示「没有找到笔记」时，检查设置 `tineBlockRef.graphRoot` 是否指向失效路径。
+4. 想手动强制重建时，运行 **块引用：重建索引**。
+
+> 提示可以通过 `tineBlockRef.showIndexNotification` 关掉；关掉后索引同样会自动建立，只是不再弹窗。
 
 ## 3. System prompt 是否生效
 
@@ -303,11 +314,28 @@ code --list-extensions --show-versions | Select-String block-reference
 
 ## 首次使用要设置图谱目录
 
-打开命令面板（`Ctrl+Shift+P`），运行：
+**大多数情况不用设。** 打开同时包含 `pages/` 和 `logseq/` 的笔记库文件夹，插件会自动识别并建立索引。
+
+探测顺序：先看当前打开的文件属于哪个图谱，再逐个检查工作区文件夹。
+
+自动探测失败时（例如只打开了单个 `.md` 文件、没打开文件夹），运行：
 
 - **块引用：选择 Tine 图谱目录**
 
-选择那个同时包含 `pages/` 和 `logseq/` 的文件夹。插件也会自动探测，探测成功就不用手动设。
+选择那个同时包含 `pages/` 和 `logseq/` 的文件夹即可，设置会写入用户级配置、跨工作区保留。
+
+## 索引什么时候更新
+
+| 时机 | 是否自动更新 |
+|---|---|
+| 打开 VS Code / 打开新的笔记库文件夹 | ✅ 自动全量建立 |
+| 保存文件 | ✅ 自动增量更新 |
+| 新建 / 删除 `.md` 文件 | ✅ 自动增量更新 |
+| **编辑但还没保存** | ✅ 自动增量更新（停止输入 0.25 秒后生效） |
+| 关闭文件且不保存 | ✅ 自动回滚到磁盘内容 |
+| 改了 `include` / `exclude` / `graphRoot` 设置 | ✅ 自动重建 |
+
+「编辑但没保存」这一项是刻意支持的：新增一个带 `id::` 的块、或新增一个 `((uuid))` 引用之后，不需要先保存就能立刻悬停看到展开结果。
 
 ---
 
@@ -340,6 +368,7 @@ code --list-extensions --show-versions | Select-String block-reference
 ## 已知限制
 
 - 只索引 `pages/` 与 `journals/`；`logseq/` 下的回收站与备份不参与索引。
+- 未保存的编辑会实时索引，但**同时打开多个笔记库时只会索引其中一个**（当前文件所属的那个，其次是第一个工作区文件夹）。切换图谱请用「块引用：选择 Tine 图谱目录」。
 - 悬空引用（目标块已被删除）会明确标注为「未找到」，不会静默失败。
 - 重复 ID（同一 UUID 出现在多个文件）会列出全部候选并提示歧义。
 - Tine 自带的 `tine block show` 命令在 Windows 上不可用（`cannot reach a graph's owner`），因此本插件自己实现解析，不依赖 CLI。
@@ -361,6 +390,7 @@ code --list-extensions --show-versions | Select-String block-reference
 | `tineBlockRef.inlineRender.showMissing` | `true` | 悬空引用显示 `⚠ 块不存在` |
 | `tineBlockRef.render.stripHeadingMarks` | `true` | 渲染时去掉标题的 `#` 标记 |
 | `tineBlockRef.hoverPreviewLines` | `6` | 悬停预览行数 |
+| `tineBlockRef.showIndexNotification` | `true` | 索引建立完成后右下角提示 |
 
 ---
 

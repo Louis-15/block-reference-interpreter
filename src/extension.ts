@@ -96,20 +96,16 @@ function registerCommands(
 	register('blockReferenceInterpreter.showBacklinksAtCursor', () => showBacklinksAtCursor(deps));
 
 	register('blockReferenceInterpreter.rebuildIndex', async () => {
-		const stats = await vscode.window.withProgress(
+		// 完成提示统一由 indexService 的右下角通知负责，这里只显示进度，避免弹两次。
+		await vscode.window.withProgress(
 			{ location: vscode.ProgressLocation.Window, title: '块引用解释器：重建索引' },
-			() => indexService.rebuild(),
-		);
-		void vscode.window.showInformationMessage(
-			`索引完成：${stats.fileCount} 个文件 / ${stats.idBlockCount} 个带 ID 块 / ${stats.referenceCount} 处引用（${stats.elapsedMs}ms）`,
+			() => indexService.rebuild({ notify: true }),
 		);
 	});
 
 	register('blockReferenceInterpreter.selectGraphRoot', async () => {
+		// switchTo → rebuild 会自动弹出索引结果提示；用户取消选择时 switchTo 不会被调用，也就不会误报。
 		await indexService.selectGraphRoot();
-		void vscode.window.showInformationMessage(
-			`已设置图谱目录：${indexService.getGraphRoot() ?? '（未设置）'}。如有需要请执行「重建索引」。`,
-		);
 	});
 
 	register('blockReferenceInterpreter.showLog', () => output.show(true));

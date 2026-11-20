@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "块引用解释器",
   "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -270,6 +270,11 @@
           "type": "boolean",
           "default": true,
           "description": "在行内渲染、悬停预览、展开文档中，去掉块标题的 Markdown 标记（#、## 等）。AI 工具返回的内容不受此设置影响，仍保留标题标记以便模型识别层级。"
+        },
+        "tineBlockRef.showIndexNotification": {
+          "type": "boolean",
+          "default": true,
+          "description": "索引自动建立完成后，在右下角弹出提示。关掉后仅在索引为空（未找到任何笔记）时仍然警告。"
         }
       }
     }

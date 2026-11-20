@@ -15,7 +15,6 @@ import {
 	showBacklinksAtCursor,
 	type CommandDeps,
 } from './vscode/commands/expandCommands';
-import { BlockReferenceDefinitionProvider } from './vscode/definitionProvider';
 import { BlockReferenceDocumentLinkProvider } from './vscode/documentLinkProvider';
 import { BlockReferenceHoverProvider } from './vscode/hoverProvider';
 import { IndexService } from './vscode/indexService';
@@ -62,7 +61,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	registerCommands(context, indexService, deps, output);
 	registerHover(context, deps);
-	registerDefinition(context, deps);
 	registerDocumentLinks(context, deps);
 	registerInlineRenderer(context, indexService, deps, log);
 	registerLanguageModelTools(context, indexService, log);
@@ -134,14 +132,6 @@ function registerHover(context: vscode.ExtensionContext, deps: CommandDeps): voi
 	);
 }
 
-/** 注册「跳转到定义」（F12）。 */
-function registerDefinition(context: vscode.ExtensionContext, deps: CommandDeps): void {
-	const provider = new BlockReferenceDefinitionProvider(deps.getIndex, deps.ensureReady);
-	context.subscriptions.push(
-		vscode.languages.registerDefinitionProvider([{ language: 'markdown' }], provider),
-	);
-}
-
 /**
  * 注册文档链接：让渲染后的块引用可以 Ctrl+Click 展开全文。
  *
@@ -149,6 +139,11 @@ function registerDefinition(context: vscode.ExtensionContext, deps: CommandDeps)
  * 装饰器的 attachment 是纯视觉元素，VS Code 不提供点击回调；
  * DocumentLink 是唯一能"把一个文本范围变成可点击链接"的官方 API，
  * 而且它的交互方式与用户对「链接」的预期一致（Ctrl+Click）。
+ *
+ * **刻意不注册 DefinitionProvider**：
+ * VS Code 里 Ctrl+Click 会同时触发 DocumentLink 与 DefinitionProvider，
+ * 两处都注册会让一次点击打开两个标签页（展开内容 + 源笔记）。
+ * 这里只保留「展开全文」这一个行为，与悬停里的按钮保持一致。
  */
 function registerDocumentLinks(context: vscode.ExtensionContext, deps: CommandDeps): void {
 	const provider = new BlockReferenceDocumentLinkProvider(deps.getIndex, deps.ensureReady);

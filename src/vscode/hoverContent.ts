@@ -4,10 +4,11 @@
  * 为什么抽出来：行内渲染与 HoverProvider 都要显示「块 + 子块」，
  * 两处各写一份必然走偏。抽成一个函数，改一处两边同步。
  *
- * 关于链接位置的取舍：
- * VS Code 的 hover 内容整体放在一个可滚动容器里，**没有** API 能让某个元素
- * 固定悬浮在底部。内容一长，「展开全文 / 反向链接」就会被滚出视野。
- * 所以这里的做法是**顶部和底部各放一份**——滚到哪一端都能点到。
+ * 关于按钮位置的取舍：
+ * VS Code 的 hover 只能返回**一个** MarkdownString，全部内容渲染在同一个
+ * 滚动容器里，没有任何 API 能再生成一个独立的悬浮容器放按钮。
+ * 所以按钮固定在内容**最上方**：打开 hover 第一眼就能看到，
+ * 不需要先滚到底。这也是在单容器限制下唯一不别扭的位置。
  */
 
 import * as vscode from 'vscode';
@@ -91,7 +92,7 @@ export function buildBlockHover(
 		const title = config.stripHeadingMarks ? stripHeadingMarks(rawTitle) : rawTitle;
 		markdown.appendMarkdown(`**${title}**\n\n`);
 
-		// 顶部链接：内容很长时用户不用滚到最底下才能操作。
+		// 按钮紧跟标题，保证不用滚动就能点到。
 		markdown.appendMarkdown(`${buildActionLinks(uuid)}\n\n`);
 
 		if (config.hoverPreviewLines > 0) {
@@ -102,12 +103,11 @@ export function buildBlockHover(
 			}
 
 			if (size.lines > config.hoverPreviewLines) {
-				markdown.appendMarkdown(`\n（仅显示前 ${config.hoverPreviewLines} 行，完整内容见下方链接）\n\n`);
+				markdown.appendMarkdown(
+					`\n（仅显示前 ${config.hoverPreviewLines} 行，点上方「展开全文」看完整内容）`,
+				);
 			}
 		}
-
-		// 底部再放一份：内容短时用户视线已经在下方，不必再回到顶部。
-		markdown.appendMarkdown(buildActionLinks(uuid));
 	}
 
 	return markdown;

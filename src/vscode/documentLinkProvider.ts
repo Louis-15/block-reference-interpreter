@@ -65,7 +65,8 @@ export class BlockReferenceDocumentLinkProvider implements vscode.DocumentLinkPr
 						`command:blockReferenceInterpreter.expandBlockById?${encodeCommandArgs([reference.uuid])}`,
 					),
 				);
-				link.tooltip = '点击展开该块引用的完整内容';
+				// tooltip 会显示在悬停内容末尾，写太长会显得臃肿，两个字够了。
+				link.tooltip = '展开';
 				links.push(link);
 			}
 		}

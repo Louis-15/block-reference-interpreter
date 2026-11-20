@@ -13,7 +13,6 @@ import * as vscode from 'vscode';
 
 import { formatAnchorLabel } from '../core/backlinkBadge';
 import { BacklinkAnchorCache, shouldShowBacklinks, type AnchorDeps } from './backlinkAnchors';
-import { SHOW_BACKLINKS_PANEL_COMMAND } from './backlinkCommands';
 import { buildAnchorTooltip } from './backlinkTooltip';
 
 export class BacklinkInlayProvider implements vscode.InlayHintsProvider, vscode.Disposable {
@@ -75,17 +74,18 @@ export class BacklinkInlayProvider implements vscode.InlayHintsProvider, vscode.
 
 			const lineText = document.lineAt(anchor.line).text;
 
-			// 点击能力只能挂在 InlayHintLabelPart 上，InlayHint 本身没有 command 属性。
-			const part = new vscode.InlayHintLabelPart(formatAnchorLabel(anchor));
-			part.command = {
-				title: '打开反链面板',
-				command: SHOW_BACKLINKS_PANEL_COMMAND,
-				arguments: [anchor.uuid],
-			};
-
+			/*
+			 * label 用纯字符串，**不**挂 `InlayHintLabelPart.command`。
+			 *
+			 * 挂了 command 之后 VS Code 会在悬停框底部自动追加一行
+			 * 「执行命令 (ctrl + 点击)」，而那个命令和悬停框里的
+			 * 「查看完整反链面板」链接指向同一个位置，属于纯噪声。
+			 * 更关键的是 InlayHint 的 command 本来就必须按 Ctrl 才响应，
+			 * 便利性远不如直接点悬停框里的链接。
+			 */
 			const hint = new vscode.InlayHint(
 				new vscode.Position(anchor.line, lineText.length),
-				[part],
+				formatAnchorLabel(anchor),
 				// Type 会给徽章底色，比纯文本更醒目，也更像 Tine 的计数标记。
 				vscode.InlayHintKind.Type,
 			);
@@ -94,7 +94,7 @@ export class BacklinkInlayProvider implements vscode.InlayHintsProvider, vscode.
 			hint.paddingLeft = true;
 
 			/*
-			 * 只设 hint 级 tooltip，**不要**再给 part 设 tooltip。
+			 * 只设 hint 级 tooltip，**不要**再给 label part 设 tooltip。
 			 * 两处都设会让悬停框把同一段文字显示两遍（实测踩过）。
 			 */
 			hint.tooltip = buildAnchorTooltip(anchor);

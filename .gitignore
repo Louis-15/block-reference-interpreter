@@ -4,6 +4,9 @@ out/
 *.vsix
 .vscode-test/
 
+# Release 附件（由 templates/ 生成，不进版本库）
+notebook-instructions.zip
+
 # 参考仓库（如果需要重新克隆，不进版本库）
 _ref_obsidian/
 _ref_tine/
@@ -13,3 +16,6 @@ _ref_*/
 *.log
 .DS_Store
 Thumbs.db
+
+# 开发者内部文档（设计稿、计划、调研记录），不对外发布
+docs/

@@ -19,8 +19,16 @@ export interface ReferenceHit {
 	uuid: string;
 	/** 0-based 行号。 */
 	line: number;
-	/** 0-based 列号（字符下标，非字节）。 */
+	/** 0-based 列号（字符下标，非字节），指向整个表达式的起点。 */
 	column: number;
+	/**
+	 * 表达式结束列（0-based，不含）。
+	 *
+	 * embed 引用会覆盖完整的 `{{embed ((uuid))}}`，
+	 * 普通行内引用只覆盖 `((uuid))`。
+	 * 渲染与悬停都用这个范围，保证 embed 外壳不会残留。
+	 */
+	endColumn: number;
 	/**
 	 * 引用形态：
 	 * - `inline`：形如 `((uuid))`

@@ -81,6 +81,7 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 			position.character,
 			(reference) => {
 				// 二次确认：该位置不在代码块/行内代码/frontmatter 内。
+				// 比对起点与 UUID，而不比对长度——长度会因 embed 与普通引用而不同。
 				const isRealReference = confirmedRefs.some(
 					(hit) =>
 						hit.line === position.line && hit.column === reference.start && hit.uuid === reference.uuid,

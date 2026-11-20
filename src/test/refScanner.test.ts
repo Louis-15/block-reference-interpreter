@@ -73,6 +73,55 @@ describe('scanReferences 假阳性排除', () => {
 	});
 });
 
+describe('scanReferences embed 引用', () => {
+	it('识别标准 embed 并覆盖完整表达式', () => {
+		const lines = [`- {{embed ((${UUID_A}))}}`];
+		const hits = scanReferences(lines);
+		expect(hits).toHaveLength(1);
+		expect(hits[0]?.kind).toBe('embed');
+		expect(hits[0]?.uuid).toBe(UUID_A);
+		// 范围必须从 `{{` 一直到 `}}`，否则渲染会残留外壳
+		const line = lines[0] ?? '';
+		expect(line.slice(hits[0]!.column, hits[0]!.endColumn)).toBe(`{{embed ((${UUID_A}))}}`);
+	});
+
+	it('embed 内部的 UUID 不会被重复计入', () => {
+		const hits = scanReferences([`- {{embed ((${UUID_A}))}}`]);
+		expect(hits).toHaveLength(1);
+	});
+
+	it('支持带空白的 embed 变体', () => {
+		const variants = [
+			`- {{ embed ((${UUID_A})) }}`,
+			`- {{embed  ((${UUID_A}))  }}`,
+			`- {{  embed ((${UUID_A}))}}`,
+		];
+		for (const line of variants) {
+			const hits = scanReferences([line]);
+			expect(hits, line).toHaveLength(1);
+			expect(hits[0]?.kind).toBe('embed');
+			expect(hits[0]?.uuid).toBe(UUID_A);
+		}
+	});
+
+	it('embed 与普通引用混在一行时都能识别', () => {
+		const line = `- {{embed ((${UUID_A}))}} 另见 ((${UUID_B}))`;
+		const hits = scanReferences([line]);
+		expect(hits).toHaveLength(2);
+		expect(hits[0]?.kind).toBe('embed');
+		expect(hits[0]?.uuid).toBe(UUID_A);
+		expect(hits[1]?.kind).toBe('inline');
+		expect(hits[1]?.uuid).toBe(UUID_B);
+		// 第二个的范围只覆盖 ((uuid))
+		expect(line.slice(hits[1]!.column, hits[1]!.endColumn)).toBe(`((${UUID_B}))`);
+	});
+
+	it('代码块里的 embed 不算', () => {
+		const lines = ['```', `{{embed ((${UUID_A}))}}`, '```'];
+		expect(scanReferences(lines)).toHaveLength(0);
+	});
+});
+
 describe('extractUuidsFromLine', () => {
 	it('按出现顺序返回 UUID', () => {
 		expect(extractUuidsFromLine(`((${UUID_A})) somewhere ((${UUID_B}))`)).toEqual([UUID_A, UUID_B]);

@@ -62,12 +62,22 @@ describe('findHoverTarget replace 模式', () => {
 		expect(findHoverTarget(refs, start + 61, fixedTitle(title), REPLACE)).toBeUndefined();
 	});
 
-	it('visualEnd 正确反映视觉右边界', () => {
+	it('visualEnd 反映的是替换文本的右边界，而不是原文宽度', () => {
 		const line = makeLine();
 		const refs = locateAllReferences(line);
-		const target = findHoverTarget(refs, 0, fixedTitle('一二三四五'), REPLACE);
-		// 原文从 0 开始，标题 5 字符，原文宽度 40 → 取较大者 40
-		expect(target?.visualEnd).toBe(SOURCE_WIDTH);
+		const title = '一二三四五';
+		const target = findHoverTarget(refs, 0, fixedTitle(title), REPLACE);
+		// 原文宽度 40，但 replace 模式下原文不可见，视觉上只占标题的 5 列。
+		// 若按原文宽度算，鼠标在引用之后 40 列内都会误触发 hover。
+		expect(target?.visualEnd).toBe(title.length);
+	});
+
+	it('标题很短时，落在原文范围内的位置仍然命中（用户可能点在隐藏的文字上）', () => {
+		const line = makeLine();
+		const refs = locateAllReferences(line);
+		// 视觉宽度只有 2 列（标题「标题」），但字符位置 30 仍落在原文范围内。
+		const target = findHoverTarget(refs, 30, fixedTitle('标题'), REPLACE);
+		expect(target).toBeDefined();
 	});
 });
 

@@ -31,7 +31,10 @@ export interface HoverTarget {
  *
  * 三种情况的宽度完全不同，必须分开算：
  * - 渲染关闭，或该引用没有替换文本（如悬空且未开启提示）：视觉宽度 = 原文宽度
- * - replace：原文不可见，视觉宽度 = 替换文本长度
+ * - replace：原文不可见（宽度被压成 0），视觉宽度**只等于替换文本长度**。
+ *   这里不能用 `max(原文宽度, 标题宽度)`：embed 引用的原文是完整的
+ *   `{{embed ((uuid))}}`（50+ 字符），取 max 会让鼠标在引用之后很远的地方
+ *   也触发 hover。
  * - append：原文可见 + 追加 `〔标题〕`（两侧括号占 2 字符）
  */
 function computeVisualEnd(reference: LocatedReference, title: string, layout: HoverLayout): number {
@@ -39,7 +42,7 @@ function computeVisualEnd(reference: LocatedReference, title: string, layout: Ho
 		return reference.end;
 	}
 	if (layout.replaceMode) {
-		return Math.max(reference.end, reference.start + title.length);
+		return reference.start + title.length;
 	}
 	return reference.end + title.length + 2;
 }
@@ -71,11 +74,8 @@ export function findHoverTarget(
 
 		// 落在原文范围内：开区间，与 refLocator 的语义保持一致。
 		const insideSource = character >= reference.start && character < reference.end;
-
 		// 落在替换文本的视觉范围内：闭区间，且只在行内渲染开启时才可能发生。
-		// 关闭渲染时不能做这个判定，否则「紧贴引用之后」的普通文字也会触发 hover。
-		const insideVisual =
-			layout.enabled && character >= reference.start && character <= visualEnd;
+		const insideVisual = layout.enabled && character >= reference.start && character <= visualEnd;
 
 		if (!insideSource && !insideVisual) {
 			continue;

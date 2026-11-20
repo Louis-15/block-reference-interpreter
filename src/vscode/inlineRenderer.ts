@@ -203,7 +203,9 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 		const items: RenderItem[] = [];
 
 		for (const hit of references) {
-			const range = new vscode.Range(hit.line, hit.column, hit.line, hit.column + hit.uuid.length + 4);
+			// 用扫描器给出的完整范围：embed 时包含 `{{embed ` 与 `}}`，
+			// 这样替换后不会残留外壳。
+			const range = new vscode.Range(hit.line, hit.column, hit.line, hit.endColumn);
 
 			// 与悬停预览共用同一套标题规则，避免「行内显示的」和「hover 推算的」不一致，
 			// 那样会导致视觉范围判定错位。

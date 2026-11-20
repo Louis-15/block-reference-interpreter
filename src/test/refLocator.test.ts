@@ -59,6 +59,42 @@ describe('locateReferenceAt', () => {
 	});
 });
 
+describe('locateAllReferences embed', () => {
+	it('embed 的范围覆盖完整表达式', () => {
+		const line = `- {{embed ((${UUID}))}}`;
+		const all = locateAllReferences(line);
+		expect(all).toHaveLength(1);
+		expect(all[0]?.kind).toBe('embed');
+		expect(line.slice(all[0]!.start, all[0]!.end)).toBe(`{{embed ((${UUID}))}}`);
+	});
+
+	it('带空白的 embed 也能定位', () => {
+		const line = `- {{ embed (( ${UUID} )) }}`;
+		const all = locateAllReferences(line);
+		expect(all).toHaveLength(1);
+		expect(all[0]?.kind).toBe('embed');
+	});
+
+	it('鼠标落在 {{embed 前缀上也能命中', () => {
+		const line = `- {{embed ((${UUID}))}}`;
+		const start = line.indexOf('{{');
+		expect(locateReferenceAt(line, start)?.uuid).toBe(UUID);
+		expect(locateReferenceAt(line, start + 3)?.uuid).toBe(UUID);
+	});
+
+	it('鼠标落在结尾 }} 上也能命中', () => {
+		const line = `- {{embed ((${UUID}))}}`;
+		const end = line.indexOf('}}', line.indexOf('(('));
+		expect(locateReferenceAt(line, end)?.uuid).toBe(UUID);
+	});
+
+	it('embed 之后的位置不命中', () => {
+		const line = `- {{embed ((${UUID}))}} 后面`;
+		const after = line.indexOf(' 后面');
+		expect(locateReferenceAt(line, after + 1)).toBeNull();
+	});
+});
+
 describe('locateAllReferences', () => {
 	it('返回全部引用及其列范围', () => {
 		const line = `((${UUID})) 和 ((${UUID2}))`;

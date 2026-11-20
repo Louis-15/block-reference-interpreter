@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "块引用解释器",
   "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "publisher": "local",
   "license": "MIT",
   "engines": {

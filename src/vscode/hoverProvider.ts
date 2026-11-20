@@ -99,6 +99,7 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 					reference.uuid,
 					config.inlineRenderMaxTitleLength,
 					true,
+					config.renderStripHeadingMarks,
 				);
 			},
 			{
@@ -118,6 +119,7 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 		const markdown = buildBlockHover(index, target.reference.uuid, {
 			hoverPreviewLines: config.hoverPreviewLines,
 			hideProperties: config.hideProperties,
+			stripHeadingMarks: config.renderStripHeadingMarks,
 		});
 
 		return new vscode.Hover(markdown, range);

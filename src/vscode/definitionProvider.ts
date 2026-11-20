@@ -28,7 +28,7 @@ export class BlockReferenceDefinitionProvider implements vscode.DefinitionProvid
 		position: vscode.Position,
 		token: vscode.CancellationToken,
 	): Promise<vscode.Location[] | undefined> {
-		if (document.languageId !== 'markdown') {
+		if (document.languageId !== 'markdown' || document.uri.scheme !== 'file') {
 			return undefined;
 		}
 

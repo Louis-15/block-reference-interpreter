@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "块引用解释器",
   "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -257,6 +257,11 @@
           "type": "boolean",
           "default": true,
           "description": "目标块不存在时，在行内显示「⚠ 块不存在」而不是原始 UUID，便于一眼发现失效引用。"
+        },
+        "tineBlockRef.render.stripHeadingMarks": {
+          "type": "boolean",
+          "default": true,
+          "description": "在行内渲染、悬停预览、展开文档中，去掉块标题的 Markdown 标记（#、## 等）。AI 工具返回的内容不受此设置影响，仍保留标题标记以便模型识别层级。"
         }
       }
     }

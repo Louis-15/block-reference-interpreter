@@ -20,6 +20,7 @@ import { readConfig } from '../indexService';
 import { getBlockTitle } from '../../core/render';
 import { locateReferenceAt } from '../../core/refLocator';
 import { normalizeUuid } from '../tools/common';
+import { openReadOnlyContent, type ReadOnlyContentProvider } from '../readOnlyContent';
 
 /** 命令实现依赖的能力，集中传入便于测试与解耦。 */
 export interface CommandDeps {
@@ -27,12 +28,21 @@ export interface CommandDeps {
 	ensureReady: () => Promise<void>;
 	getGraphRoot: () => string | undefined;
 	log: (message: string) => void;
+	/** 只读虚拟文档提供者：用于打开「关掉不会问保存」的标签页。 */
+	contentProvider: ReadOnlyContentProvider;
 }
 
-/** 把文本作为未保存的 Markdown 文档打开。 */
-async function openAsDocument(content: string): Promise<void> {
-	const document = await vscode.workspace.openTextDocument({ content, language: 'markdown' });
-	await vscode.window.showTextDocument(document, { preview: false });
+/**
+ * 把文本作为**只读**文档打开。
+ *
+ * 不用 untitled 文档的原因：关标签页时 VS Code 会弹「是否保存」，
+ * 而扩展没有任何 API 能关掉那个提示。只读虚拟文档没有这个负担。
+ */
+async function openAsDocument(deps: CommandDeps, title: string, content: string): Promise<void> {
+	const opened = await openReadOnlyContent(deps.contentProvider, title, content);
+	if (!opened) {
+		void vscode.window.showErrorMessage('无法打开内容窗口。请查看「块引用解释器」输出面板。');
+	}
 }
 
 /** 展开单个 UUID，返回可直接展示的文本。 */
@@ -42,6 +52,7 @@ function expandOneBlock(index: GraphIndex, uuid: string): string {
 		maxDepth: config.maxDepth,
 		maxChars: config.maxOutputChars,
 		hideProperties: config.hideProperties,
+		stripHeadingMarks: config.renderStripHeadingMarks,
 	}).text;
 }
 
@@ -77,9 +88,9 @@ export async function expandCurrentNote(deps: CommandDeps): Promise<void> {
 		},
 	);
 
-	await openAsDocument(expanded);
+	await openAsDocument(deps, `${document.fileName} 展开`, expanded);
 	void vscode.window.showInformationMessage(
-		`已展开 ${parsed.references.length} 处块引用（新标签页，未保存文件）。`,
+		`已展开 ${parsed.references.length} 处块引用（只读标签页，不会提示保存）。`,
 	);
 }
 
@@ -135,7 +146,7 @@ export async function expandBlockById(deps: CommandDeps, uuid?: string): Promise
 
 	await deps.ensureReady();
 	const text = expandOneBlock(deps.getIndex(), normalized);
-	await openAsDocument(text);
+	await openAsDocument(deps, `块 ${normalized}`, text);
 
 	if (text.includes('未找到该 UUID')) {
 		void vscode.window.showWarningMessage(`未找到块 ${normalized}，可能已被删除。`);

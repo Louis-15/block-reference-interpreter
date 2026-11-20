@@ -24,6 +24,8 @@ export interface RenderOptions {
 	tabSize?: number;
 	/** 每一层子块使用的缩进空格数，默认 2。 */
 	indentUnit?: number;
+	/** 是否去掉标题标记（`#` / `##` …），默认 false。 */
+	stripHeadingMarks?: boolean;
 }
 
 const DEFAULT_HIDDEN_PROPERTIES = ['id', 'collapsed'];
@@ -70,12 +72,27 @@ export function getBlockTitle(blockLine: string): string {
 	return blockLine.trim();
 }
 
+/**
+ * 去掉标题标记（`#` / `##` …）。
+ *
+ * 为什么需要：Logseq 系笔记常用 `- ## 3.1 小节名` 表示层级，
+ * 但在行内渲染、悬停预览、展开文档这些「给人看」的场景里，
+ * 连 `##` 一起显示会很吵。渲染成普通文本更清爽。
+ *
+ * **注意**：只匹配行首 `#` 加空白。`#标签`（Logseq 的 tag 语法）不会被误伤，
+ * 因为它没有空格分隔，而 `- # 标题` 才是 heading。
+ */
+export function stripHeadingMarks(title: string): string {
+	return title.replace(/^#{1,6}[ \t]+/, '');
+}
+
 interface ResolvedRenderOptions {
 	includeChildren: boolean;
 	compact: boolean;
 	tabSize: number;
 	indentUnit: number;
 	hidden: ReadonlySet<string>;
+	stripHeadingMarks: boolean;
 }
 
 /**
@@ -97,7 +114,8 @@ function emitBlock(
 	}
 
 	const prefix = ' '.repeat(depth * options.indentUnit);
-	const title = getBlockTitle(block.ownLines[0] ?? '');
+	const rawTitle = getBlockTitle(block.ownLines[0] ?? '');
+	const title = options.stripHeadingMarks ? stripHeadingMarks(rawTitle) : rawTitle;
 	// 空块（正文为空）只输出列表标记本身，避免行尾拖一串空格。
 	out.push((isRoot ? prefix + title : `${prefix}- ${title}`).trimEnd());
 
@@ -140,6 +158,7 @@ export function renderBlockTree(parsed: ParsedFile, blockIndex: number, options:
 		tabSize: options.tabSize ?? 4,
 		indentUnit: options.indentUnit ?? 2,
 		hidden,
+		stripHeadingMarks: options.stripHeadingMarks ?? false,
 	};
 
 	const out: string[] = [];

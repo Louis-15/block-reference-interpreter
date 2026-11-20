@@ -301,6 +301,7 @@ tine block show <uuid> --graph <图谱>
 | `tineBlockRef.inlineRender.mode` | `"replace"` | `replace` 隐藏原文 / `append` 追加标题 |
 | `tineBlockRef.inlineRender.maxTitleLength` | `60` | 行内标题最大长度 |
 | `tineBlockRef.inlineRender.showMissing` | `true` | 悬空引用显示 `⚠ 块不存在` |
+| `tineBlockRef.render.stripHeadingMarks` | `true` | 渲染时去掉标题的 `#` 标记 |
 
 ---
 

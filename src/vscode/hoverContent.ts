@@ -3,12 +3,17 @@
  *
  * 为什么抽出来：行内渲染与 HoverProvider 都要显示「块 + 子块」，
  * 两处各写一份必然走偏。抽成一个函数，改一处两边同步。
+ *
+ * 关于链接位置的取舍：
+ * VS Code 的 hover 内容整体放在一个可滚动容器里，**没有** API 能让某个元素
+ * 固定悬浮在底部。内容一长，「展开全文 / 反向链接」就会被滚出视野。
+ * 所以这里的做法是**顶部和底部各放一份**——滚到哪一端都能点到。
  */
 
 import * as vscode from 'vscode';
 
 import type { BlockLookupResult, GraphIndex } from '../core/graphIndex';
-import { getBlockTitle, measureSubtree, renderBlockTree } from '../core/render';
+import { getBlockTitle, measureSubtree, renderBlockTree, stripHeadingMarks } from '../core/render';
 import { encodeCommandArgs } from './tools/common';
 
 /** 构建悬停内容所需的配置。 */
@@ -17,6 +22,15 @@ export interface HoverContentConfig {
 	hoverPreviewLines: number;
 	/** 渲染时隐藏的属性名。 */
 	hideProperties: string[];
+	/** 是否去掉标题的 `#` 标记。 */
+	stripHeadingMarks: boolean;
+}
+
+/** 生成「展开全文 · 反向链接」这一行链接。 */
+function buildActionLinks(uuid: string): string {
+	const expandLink = `[展开全文](command:blockReferenceInterpreter.expandBlockById?${encodeCommandArgs([uuid])})`;
+	const backlinkLink = `[反向链接](command:blockReferenceInterpreter.showBacklinks?${encodeCommandArgs([uuid])})`;
+	return `${expandLink} · ${backlinkLink}`;
 }
 
 /**
@@ -36,13 +50,14 @@ export function buildBlockHover(
 	markdown.isTrusted = true;
 	markdown.supportHtml = false;
 
-	const backlinkLink = `[反向链接](command:blockReferenceInterpreter.showBacklinks?${encodeCommandArgs([uuid])})`;
 	const candidates = index.lookupBlocks(uuid);
 
 	if (candidates.length === 0) {
 		markdown.appendMarkdown('**⚠ 未找到该块**\n\n');
 		markdown.appendMarkdown(`UUID \`${uuid}\` 没有对应的块。可能已被删除，或引用来自其他图谱。\n\n`);
-		markdown.appendMarkdown(backlinkLink);
+		markdown.appendMarkdown(
+			`[反向链接](command:blockReferenceInterpreter.showBacklinks?${encodeCommandArgs([uuid])})`,
+		);
 		return markdown;
 	}
 
@@ -72,8 +87,12 @@ export function buildBlockHover(
 			`\`${sourcePath}\` 第 ${block.startLine + 1} 行 · ${size.lines} 行 / ${size.chars} 字符\n\n`,
 		);
 
-		const title = getBlockTitle(block.ownLines[0] ?? '');
+		const rawTitle = getBlockTitle(block.ownLines[0] ?? '');
+		const title = config.stripHeadingMarks ? stripHeadingMarks(rawTitle) : rawTitle;
 		markdown.appendMarkdown(`**${title}**\n\n`);
+
+		// 顶部链接：内容很长时用户不用滚到最底下才能操作。
+		markdown.appendMarkdown(`${buildActionLinks(uuid)}\n\n`);
 
 		if (config.hoverPreviewLines > 0) {
 			const preview = buildPreview(candidate, config);
@@ -87,11 +106,8 @@ export function buildBlockHover(
 			}
 		}
 
-		markdown.appendMarkdown(
-			`[展开全文](command:blockReferenceInterpreter.expandBlockById?${encodeCommandArgs([uuid])})` +
-				` · ` +
-				backlinkLink,
-		);
+		// 底部再放一份：内容短时用户视线已经在下方，不必再回到顶部。
+		markdown.appendMarkdown(buildActionLinks(uuid));
 	}
 
 	return markdown;
@@ -106,6 +122,7 @@ function buildPreview(candidate: BlockLookupResult, config: HoverContentConfig):
 	const rendered = renderBlockTree(candidate.parsed, candidate.blockIndex, {
 		includeChildren: true,
 		hideProperties: config.hideProperties,
+		stripHeadingMarks: config.stripHeadingMarks,
 	});
 	const lines = rendered.split('\n');
 	if (lines.length <= config.hoverPreviewLines) {
@@ -125,6 +142,7 @@ export function getInlineTitle(
 	uuid: string,
 	maxTitleLength: number,
 	showMissing: boolean,
+	stripMarks: boolean,
 ): string | undefined {
 	const candidates = index.lookupBlocks(uuid);
 
@@ -142,6 +160,9 @@ export function getInlineTitle(
 	}
 
 	let title = getBlockTitle(block.ownLines[0] ?? '');
+	if (stripMarks) {
+		title = stripHeadingMarks(title);
+	}
 	if (title.length === 0) {
 		title = '（空块）';
 	}

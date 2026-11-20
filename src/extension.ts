@@ -16,9 +16,11 @@ import {
 	type CommandDeps,
 } from './vscode/commands/expandCommands';
 import { BlockReferenceDefinitionProvider } from './vscode/definitionProvider';
+import { BlockReferenceDocumentLinkProvider } from './vscode/documentLinkProvider';
 import { BlockReferenceHoverProvider } from './vscode/hoverProvider';
 import { IndexService } from './vscode/indexService';
 import { BlockReferenceInlineRenderer, describeInlineRenderer } from './vscode/inlineRenderer';
+import { ReadOnlyContentProvider, VIRTUAL_SCHEME } from './vscode/readOnlyContent';
 import { FindBacklinksTool } from './vscode/tools/findBacklinksTool';
 import { ReadBlockTool } from './vscode/tools/readBlockTool';
 import { ReadNoteTool } from './vscode/tools/readNoteTool';
@@ -36,16 +38,32 @@ export function activate(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(output);
 	context.subscriptions.push({ dispose: () => indexService.dispose() });
 
+	// 只读虚拟文档：展开内容用它显示，关标签页时不会问「是否保存」。
+	const contentProvider = new ReadOnlyContentProvider();
+	context.subscriptions.push(contentProvider);
+	context.subscriptions.push(
+		vscode.workspace.registerFileSystemProvider(VIRTUAL_SCHEME, contentProvider, { isReadonly: true }),
+	);
+	context.subscriptions.push(
+		vscode.workspace.onDidCloseTextDocument((document) => {
+			if (document.uri.scheme === VIRTUAL_SCHEME) {
+				contentProvider.release(document.uri);
+			}
+		}),
+	);
+
 	const deps: CommandDeps = {
 		getIndex: () => indexService.getIndex(),
 		ensureReady: () => indexService.ensureReady(),
 		getGraphRoot: () => indexService.getGraphRoot(),
 		log,
+		contentProvider,
 	};
 
 	registerCommands(context, indexService, deps, output);
 	registerHover(context, deps);
 	registerDefinition(context, deps);
+	registerDocumentLinks(context, deps);
 	registerInlineRenderer(context, indexService, deps, log);
 	registerLanguageModelTools(context, indexService, log);
 
@@ -116,11 +134,26 @@ function registerHover(context: vscode.ExtensionContext, deps: CommandDeps): voi
 	);
 }
 
-/** 注册「跳转到定义」（F12 / Ctrl+Click）。 */
+/** 注册「跳转到定义」（F12）。 */
 function registerDefinition(context: vscode.ExtensionContext, deps: CommandDeps): void {
 	const provider = new BlockReferenceDefinitionProvider(deps.getIndex, deps.ensureReady);
 	context.subscriptions.push(
 		vscode.languages.registerDefinitionProvider([{ language: 'markdown' }], provider),
+	);
+}
+
+/**
+ * 注册文档链接：让渲染后的块引用可以 Ctrl+Click 展开全文。
+ *
+ * 为什么用 DocumentLink 而不是别的：
+ * 装饰器的 attachment 是纯视觉元素，VS Code 不提供点击回调；
+ * DocumentLink 是唯一能"把一个文本范围变成可点击链接"的官方 API，
+ * 而且它的交互方式与用户对「链接」的预期一致（Ctrl+Click）。
+ */
+function registerDocumentLinks(context: vscode.ExtensionContext, deps: CommandDeps): void {
+	const provider = new BlockReferenceDocumentLinkProvider(deps.getIndex, deps.ensureReady);
+	context.subscriptions.push(
+		vscode.languages.registerDocumentLinkProvider([{ language: 'markdown' }], provider),
 	);
 }
 

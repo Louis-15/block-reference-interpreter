@@ -212,6 +212,7 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 				hit.uuid,
 				config.inlineRenderMaxTitleLength,
 				config.inlineRenderShowMissing,
+				config.renderStripHeadingMarks,
 			);
 			if (title === undefined) {
 				continue;

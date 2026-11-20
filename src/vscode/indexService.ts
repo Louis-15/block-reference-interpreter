@@ -38,6 +38,7 @@ export function readConfig() {
 		inlineRenderMode: config.get<string>('inlineRender.mode', 'replace'),
 		inlineRenderMaxTitleLength: config.get<number>('inlineRender.maxTitleLength', 60),
 		inlineRenderShowMissing: config.get<boolean>('inlineRender.showMissing', true),
+		renderStripHeadingMarks: config.get<boolean>('render.stripHeadingMarks', true),
 	};
 }
 

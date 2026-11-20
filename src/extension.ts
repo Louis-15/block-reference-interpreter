@@ -117,12 +117,18 @@ function registerCommands(
 
 /** 注册悬停预览（显示块 + 子块）。 */
 function registerHover(context: vscode.ExtensionContext, deps: CommandDeps): void {
-	const provider = new BlockReferenceHoverProvider(deps.getIndex, deps.ensureReady, deps.getGraphRoot);
+	const provider = new BlockReferenceHoverProvider(
+		deps.getIndex,
+		deps.ensureReady,
+		deps.getGraphRoot,
+		deps.log,
+	);
 
 	context.subscriptions.push(
 		// 只对 Markdown 生效；provider 内部还会再判断是否在图谱目录内。
 		vscode.languages.registerHoverProvider([{ language: 'markdown' }], provider),
 	);
+	deps.log('[悬停] 已注册 Markdown 悬停预览提供者');
 
 	// 文档关闭时释放该文档的扫描缓存，避免长会话里缓存越积越多。
 	context.subscriptions.push(

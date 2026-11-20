@@ -40,9 +40,31 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 		private readonly getIndex: () => GraphIndex,
 		private readonly ensureReady: () => Promise<void>,
 		private readonly getGraphRoot: () => string | undefined,
+		/** 诊断日志出口。悬停是「静默失败」最难查的功能，任何一条返回 undefined 的路径都要留痕。 */
+		private readonly log?: (message: string) => void,
 	) {}
 
 	async provideHover(
+		document: vscode.TextDocument,
+		position: vscode.Position,
+		token: vscode.CancellationToken,
+	): Promise<vscode.Hover | undefined> {
+		/**
+		 * 整体包 try/catch。
+		 *
+		 * VS Code 会静默吞掉 HoverProvider 抛出的异常——扩展作者只能看到
+		 * 「悬停没反应」，没有任何错误信息。这里必须自己抓，否则无从排查。
+		 */
+		try {
+			return await this.doProvideHover(document, position, token);
+		} catch (error) {
+			const message = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
+			this.log?.(`[错误] 悬停处理异常：${message}`);
+			return undefined;
+		}
+	}
+
+	private async doProvideHover(
 		document: vscode.TextDocument,
 		position: vscode.Position,
 		token: vscode.CancellationToken,
@@ -52,8 +74,14 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 		}
 
 		// 只对图谱内的笔记生效：其他 Markdown 文件里出现 ((uuid)) 多半是无关文本。
-		const graphRoot = this.getGraphRoot() ?? detectGraphRoot(document.uri.fsPath, nodePathProbe) ?? undefined;
-		if (!graphRoot || !isGraphContentFile(document.uri.fsPath, graphRoot)) {
+		const detectedRoot = detectGraphRoot(document.uri.fsPath, nodePathProbe) ?? undefined;
+		const graphRoot = this.getGraphRoot() ?? detectedRoot;
+		if (!graphRoot) {
+			this.log?.(`[悬停跳过] 未找到图谱根目录：${document.uri.fsPath}`);
+			return undefined;
+		}
+		if (!isGraphContentFile(document.uri.fsPath, graphRoot)) {
+			this.log?.(`[悬停跳过] 文件不在 pages/ 或 journals/ 下：${document.uri.fsPath}（图谱根 ${graphRoot}）`);
 			return undefined;
 		}
 
@@ -73,6 +101,7 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 		// 视觉范围判定需要索引里的标题长度，所以先确保索引就绪。
 		await this.ensureReady();
 		if (token.isCancellationRequested) {
+			this.log?.('[悬停跳过] 等待索引期间被取消');
 			return undefined;
 		}
 
@@ -87,6 +116,12 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 						hit.line === position.line && hit.column === reference.start && hit.uuid === reference.uuid,
 				);
 				if (!isRealReference) {
+					// 这是最容易出问题的一步：两套正则（refScanner / refLocator）
+					// 只要有一处不一致，这里就会静默全部失配。
+					this.log?.(
+						`[悬停失配] 行 ${position.line + 1} 列 ${reference.start} uuid=${reference.uuid}：` +
+							`refLocator 定位到了引用，但 refScanner 的整篇结果里没有对应条目`,
+					);
 					return undefined;
 				}
 
@@ -96,13 +131,17 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 					return config.inlineRenderShowMissing ? '⚠ 块不存在' : '';
 				}
 
-				return getInlineTitle(
+				const title = getInlineTitle(
 					index,
 					reference.uuid,
 					config.inlineRenderMaxTitleLength,
 					true,
 					config.renderStripHeadingMarks,
 				);
+				if (title === undefined) {
+					this.log?.(`[悬停跳过] 无法取得标题：uuid=${reference.uuid}`);
+				}
+				return title;
 			},
 			{
 				enabled: config.inlineRenderEnabled,

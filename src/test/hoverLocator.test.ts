@@ -62,22 +62,39 @@ describe('findHoverTarget replace 模式', () => {
 		expect(findHoverTarget(refs, start + 61, fixedTitle(title), REPLACE)).toBeUndefined();
 	});
 
-	it('visualEnd 反映的是替换文本的右边界，而不是原文宽度', () => {
+	it('visualEnd 至少覆盖到原文末尾，不能只按标题宽度算', () => {
 		const line = makeLine();
 		const refs = locateAllReferences(line);
 		const title = '一二三四五';
 		const target = findHoverTarget(refs, 0, fixedTitle(title), REPLACE);
-		// 原文宽度 40，但 replace 模式下原文不可见，视觉上只占标题的 5 列。
-		// 若按原文宽度算，鼠标在引用之后 40 列内都会误触发 hover。
-		expect(target?.visualEnd).toBe(title.length);
+		// replace 模式下字符宽度被压成 0，VS Code 算出的鼠标位置可能落在原文末尾。
+		// 视觉边界必须覆盖到 reference.end，否则 character === end 时两个判定都失败。
+		expect(target?.visualEnd).toBe(SOURCE_WIDTH);
 	});
 
-	it('标题很短时，落在原文范围内的位置仍然命中（用户可能点在隐藏的文字上）', () => {
+	it('鼠标位置等于 reference.end 时仍然命中（回归：曾导致 hover 全失效）', () => {
 		const line = makeLine();
 		const refs = locateAllReferences(line);
-		// 视觉宽度只有 2 列（标题「标题」），但字符位置 30 仍落在原文范围内。
-		const target = findHoverTarget(refs, 30, fixedTitle('标题'), REPLACE);
-		expect(target).toBeDefined();
+		const title = '标题';
+
+		// 这是真实场景：原文被 font-size:0 隐藏后，鼠标在其上时
+		// VS Code 换算出的位置常常就是 end。
+		expect(findHoverTarget(refs, SOURCE_WIDTH, fixedTitle(title), REPLACE)).toBeDefined();
+	});
+
+	it('标题很短时，落在隐藏原文任意位置都命中', () => {
+		const line = makeLine();
+		const refs = locateAllReferences(line);
+		const title = '标题';
+		for (const column of [0, 1, 10, 20, SOURCE_WIDTH - 1, SOURCE_WIDTH]) {
+			expect(findHoverTarget(refs, column, fixedTitle(title), REPLACE), `列 ${column}`).toBeDefined();
+		}
+	});
+
+	it('超出原文末尾之后不命中', () => {
+		const line = makeLine();
+		const refs = locateAllReferences(line);
+		expect(findHoverTarget(refs, SOURCE_WIDTH + 1, fixedTitle('标题'), REPLACE)).toBeUndefined();
 	});
 });
 

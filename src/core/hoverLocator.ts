@@ -29,20 +29,24 @@ export interface HoverTarget {
 /**
  * 计算某处引用在编辑器里的视觉右边界。
  *
- * 三种情况的宽度完全不同，必须分开算：
- * - 渲染关闭，或该引用没有替换文本（如悬空且未开启提示）：视觉宽度 = 原文宽度
- * - replace：原文不可见（宽度被压成 0），视觉宽度**只等于替换文本长度**。
- *   这里不能用 `max(原文宽度, 标题宽度)`：embed 引用的原文是完整的
- *   `{{embed ((uuid))}}`（50+ 字符），取 max 会让鼠标在引用之后很远的地方
- *   也触发 hover。
- * - append：原文可见 + 追加 `〔标题〕`（两侧括号占 2 字符）
+ * **必须取 `max(原文宽度, 替换文本宽度)`，不能只按替换文本算。**
+ *
+ * 原因（这是 0.1.10 踩过的坑）：
+ * `replace` 模式把原文宽度压成 0，但字符仍然存在。VS Code 把鼠标位置换算成
+ * 字符偏移时，落在被隐藏的原文区域会得到**接近 `reference.end` 的位置**，
+ * 而不是 `start`~`end-1` 之间的某点。
+ * 若只按标题宽度算视觉边界（如 5 字符），`character = start + 40` 就会同时
+ * 超出原文区间与视觉区间，导致**所有引用的 hover 全部失效**。
+ *
+ * 所以视觉边界至少覆盖到原文末尾：宁可鼠标在引用右边缘也弹提示，
+ * 也不能让整个功能静默失灵。
  */
 function computeVisualEnd(reference: LocatedReference, title: string, layout: HoverLayout): number {
 	if (!layout.enabled || title.length === 0) {
 		return reference.end;
 	}
 	if (layout.replaceMode) {
-		return reference.start + title.length;
+		return Math.max(reference.end, reference.start + title.length);
 	}
 	return reference.end + title.length + 2;
 }
@@ -72,9 +76,19 @@ export function findHoverTarget(
 
 		const visualEnd = computeVisualEnd(reference, title, layout);
 
-		// 落在原文范围内：开区间，与 refLocator 的语义保持一致。
+		// 原文范围用开区间：渲染关闭时「紧贴 )) 之后」不该算在引用上。
 		const insideSource = character >= reference.start && character < reference.end;
-		// 落在替换文本的视觉范围内：闭区间，且只在行内渲染开启时才可能发生。
+
+		/**
+		 * 视觉范围用闭区间，且只在行内渲染开启时生效。
+		 *
+		 * 这是修复「hover 全部失效」的关键：
+		 * `replace` 模式把原文宽度压成 0，鼠标落在这段隐藏字符上时，
+		 * VS Code 换算出的位置可能是 `reference.end` 本身
+		 * （不在 `[start, end)` 里），只靠 insideSource 会漏掉。
+		 * 而 `computeVisualEnd` 保证 visualEnd >= reference.end，
+		 * 于是这里能把这种情况接住。
+		 */
 		const insideVisual = layout.enabled && character >= reference.start && character <= visualEnd;
 
 		if (!insideSource && !insideVisual) {

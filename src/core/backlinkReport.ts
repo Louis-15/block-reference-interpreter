@@ -238,6 +238,9 @@ export function toPageName(filePath: string): string {
  *
  * 用 Markdown 而不是纯文本：面板是只读文档，Markdown 能提供标题层级，
  * 而且在 VS Code 的 Markdown 预览里也能看清结构。
+ *
+ * 注意：这里是**给 AI 工具**用的版本，保留行号与引用类型等机器友好的信息。
+ * 面板（给人看、要可点击）走 `renderBacklinkPanel`。
  */
 export function renderBacklinkReport(
 	report: BacklinkReport,
@@ -345,4 +348,156 @@ export function renderBacklinkReport(
 	}
 
 	return lines.join('\n');
+}
+
+/** 面板里一条可点击链接的位置与目标。 */
+export interface BacklinkPanelLink {
+	/** 链接所在行（0-based）。 */
+	line: number;
+	/** 链接起始列（0-based，含）。 */
+	startColumn: number;
+	/** 链接结束列（0-based，不含）。 */
+	endColumn: number;
+	/** 跳转目标文件绝对路径。 */
+	path: string;
+	/** 跳转目标行（0-based）。 */
+	targetLine: number;
+	/** 悬停说明，补回被省略的行号与引用类型。 */
+	tooltip: string;
+}
+
+/** 面板内容与其上的链接位置。 */
+export interface BacklinkPanelContent {
+	/** 完整文本。 */
+	text: string;
+	/** 需要变成可点击链接的片段。 */
+	links: BacklinkPanelLink[];
+}
+
+/**
+ * 渲染**给人看**的反链面板。
+ *
+ * 与 `renderBacklinkReport`（AI 工具用）的关键差异：
+ * 每个引用位置的第二行不再写「第 N 行 · 行内引用」，而是显示**被引用块的文字**，
+ * 并且这一行是可点击的——点它直接打开引用所在笔记并跳过去。
+ *
+ * 为什么行号不直接印在正文里：一块被 5 处引用时，每处都重复印「第 N 行」
+ * 会挤掉真正有用的信息（被引用的是哪个块）。行号改放到链接的 tooltip 里，
+ * 需要时悬停一下就能看到，界面还干净。
+ *
+ * 为什么返回链接坐标而不是在文本里写 Markdown 链接语法：
+ * 面板是**纯文本编辑器**里打开的只读 .md，`[文字](command:...)` 那样写
+ * 会把一长串 URI 直接糊在正文中，既难读又会被误编辑。
+ * 坐标交给 `DocumentLinkProvider` 渲染成真正的可点击链接，正文保持干净。
+ */
+export function renderBacklinkPanel(
+	report: BacklinkReport,
+	options: RenderBacklinkReportOptions = {},
+): BacklinkPanelContent {
+	const lines: string[] = [];
+	const links: BacklinkPanelLink[] = [];
+
+	const push = (text: string): void => {
+		lines.push(text);
+	};
+
+	if (options.includeHeader !== false) {
+		push(`# 块 \`${report.uuid}\` 的反向链接`);
+		push('');
+
+		if (report.definitions.length === 0) {
+			push('> ⚠ 该 UUID 对应的块不存在（可能已被删除）。以下引用均为**悬空引用**。');
+		} else if (report.definitions.length > 1) {
+			push(`> ⚠ 该 UUID 在 ${report.definitions.length} 处重复定义，引用可能指向其中任意一个。`);
+		}
+
+		const first = report.definitions[0];
+		if (first) {
+			push(`**定义位置**：\`${toDisplayPath(first.path, options.graphRoot)}\` 第 ${first.line + 1} 行`);
+			push(`**块内容**：${first.title}`);
+		}
+
+		if (report.itemCount > 0) {
+			const hitNote =
+				report.hitCount > report.itemCount ? `（同一块内重复出现共 ${report.hitCount} 次）` : '';
+			push('');
+			push(`**引用统计**：${report.fileCount} 个页面 / ${report.itemCount} 个引用块${hitNote}`);
+			push('');
+			push('点击下面的块名可直接跳到引用位置。');
+		}
+		push('');
+	}
+
+	if (report.itemCount === 0) {
+		push('没有任何笔记引用这个块。');
+		return { text: lines.join('\n'), links };
+	}
+
+	// 这一行将成为每处引用的链接文字。悬空引用没有块，退回行号保证仍可点击。
+	const targetTitle = report.definitions[0]?.title ?? '';
+
+	const maxItems = options.maxItemsPerGroup;
+	const maxTotal = options.maxTotalItems;
+	let emitted = 0;
+	let truncatedByTotal = false;
+
+	for (const group of report.groups) {
+		if (truncatedByTotal) {
+			break;
+		}
+
+		const relative = toDisplayPath(group.path, options.graphRoot);
+		push(`## ${toPageName(group.path)}`);
+		push('');
+		push(`\`${relative}\` · ${group.count} 处引用`);
+		push('');
+
+		const shown = maxItems === undefined ? group.items : group.items.slice(0, maxItems);
+		for (const item of shown) {
+			if (maxTotal !== undefined && emitted >= maxTotal) {
+				truncatedByTotal = true;
+				break;
+			}
+
+			const hasPath = item.blockPath.length > 0;
+			if (hasPath) {
+				push(`- ${item.blockPath}`);
+			}
+
+			const prefix = hasPath ? '  - ' : '- ';
+			const linkText = targetTitle.length > 0 ? targetTitle : `第 ${item.line + 1} 行`;
+
+			const kindText = item.kinds.includes('embed')
+				? item.kinds.includes('inline')
+					? '行内引用 + 嵌入引用'
+					: '嵌入引用'
+				: '行内引用';
+			const countText = item.count > 1 ? `，本块内 ${item.count} 次` : '';
+
+			links.push({
+				line: lines.length,
+				startColumn: prefix.length,
+				endColumn: prefix.length + linkText.length,
+				path: item.path,
+				targetLine: item.line,
+				tooltip: `${relative} 第 ${item.line + 1} 行 · ${kindText}${countText}`,
+			});
+
+			push(prefix + linkText);
+			emitted++;
+		}
+
+		if (!truncatedByTotal && maxItems !== undefined && group.items.length > maxItems) {
+			push(`- （本页还有 ${group.items.length - maxItems} 处未显示）`);
+		}
+
+		push('');
+	}
+
+	if (truncatedByTotal && maxTotal !== undefined) {
+		push(`- （已达显示上限 ${maxTotal} 条，共 ${report.itemCount} 条。）`);
+		push('');
+	}
+
+	return { text: lines.join('\n'), links };
 }

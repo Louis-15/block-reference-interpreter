@@ -24,6 +24,30 @@ interface VirtualEntry {
 	content: string;
 	/** 显示用的标题（不含扩展名）。 */
 	title: string;
+	/** 该文档上的可点击链接。 */
+	links: ReadOnlyLink[];
+}
+
+/**
+ * 只读文档上的一条可点击链接。
+ *
+ * 用「坐标 + 命令」而不是 Markdown `[文字](command:...)` 语法：
+ * 面板是纯文本编辑器里的只读文档，写成 Markdown 语法会把一长串 URI
+ * 直接糊在正文中，既难读又会被误编辑。
+ */
+export interface ReadOnlyLink {
+	/** 0-based 行号。 */
+	line: number;
+	/** 0-based 起始列。 */
+	startColumn: number;
+	/** 0-based 结束列（不含）。 */
+	endColumn: number;
+	/** 点击时执行的命令。 */
+	command: string;
+	/** 命令参数。 */
+	arguments: unknown[];
+	/** 悬停说明。 */
+	tooltip?: string;
 }
 
 export class ReadOnlyContentProvider implements vscode.FileSystemProvider, vscode.Disposable {
@@ -92,14 +116,25 @@ export class ReadOnlyContentProvider implements vscode.FileSystemProvider, vscod
 	 *
 	 * @param title 标签页显示的名字（不含 .md）
 	 * @param content 文本内容
+	 * @param links 该文档上需要变成可点击的片段
 	 */
-	register(title: string, content: string): vscode.Uri {
+	register(title: string, content: string, links: ReadOnlyLink[] = []): vscode.Uri {
 		const safeTitle = sanitizeFileName(title);
 		this.sequence += 1;
 		const suffix = this.sequence.toString(36);
 		const uri = vscode.Uri.parse(`${VIRTUAL_SCHEME}:/${encodeURIComponent(safeTitle)}-${suffix}.md`);
-		this.entries.set(uri.toString(), { content, title: safeTitle });
+		this.entries.set(uri.toString(), { content, title: safeTitle, links });
 		return uri;
+	}
+
+	/**
+	 * 取某份虚拟文档上的链接。
+	 *
+	 * 返回 `undefined` 表示这不是本 provider 管理的文档，
+	 * 调用方据此跳过，不要当成「没有链接」处理。
+	 */
+	getLinks(uri: vscode.Uri): ReadOnlyLink[] | undefined {
+		return this.entries.get(uri.toString())?.links;
 	}
 
 	/** 清理某份内容（文档关闭时调用，避免长会话累积内存）。 */
@@ -125,14 +160,16 @@ function sanitizeFileName(title: string): string {
 /**
  * 以只读方式打开一份内容。
  *
+ * @param links 该文档上需要变成可点击的片段
  * @returns 打开成功返回 true
  */
 export async function openReadOnlyContent(
 	provider: ReadOnlyContentProvider,
 	title: string,
 	content: string,
+	links: ReadOnlyLink[] = [],
 ): Promise<boolean> {
-	const uri = provider.register(title, content);
+	const uri = provider.register(title, content, links);
 	try {
 		const document = await vscode.workspace.openTextDocument(uri);
 		await vscode.window.showTextDocument(document, { preview: false });

@@ -11,10 +11,11 @@
 
 import * as vscode from 'vscode';
 
-import { buildBacklinkReport, renderBacklinkReport } from '../../core/backlinkReport';
+import { buildBacklinkReport, renderBacklinkPanel } from '../../core/backlinkReport';
 import { readConfig } from '../indexService';
 import { normalizeUuid } from '../tools/common';
 import { openReadOnlyContent } from '../readOnlyContent';
+import { OPEN_BACKLINK_AT_COMMAND } from '../backlinkCommands';
 import type { CommandDeps } from './expandCommands';
 
 /**
@@ -50,15 +51,25 @@ export async function showBacklinksPanel(deps: CommandDeps, uuid?: string): Prom
 		maxPathDepth: config.backlinkPathDepth,
 	});
 
-	const content = renderBacklinkReport(report, {
+	const panel = renderBacklinkPanel(report, {
 		graphRoot: deps.getGraphRoot(),
 		maxItemsPerGroup: config.backlinkItemsPerPage,
 		purpose: 'panel',
 	});
 
+	// 坐标 → 可点击链接由 virtualDocumentLinks 负责，正文保持纯文本。
+	const links = panel.links.map((spec) => ({
+		line: spec.line,
+		startColumn: spec.startColumn,
+		endColumn: spec.endColumn,
+		command: OPEN_BACKLINK_AT_COMMAND,
+		arguments: [spec.path, spec.targetLine],
+		tooltip: spec.tooltip,
+	}));
+
 	// 无引用时也打开面板：面板里写清了「块是否存在」，
 	// 这比弹一条转瞬即逝的提示更有用（用户能回头再看）。
-	await openReadOnlyContent(deps.contentProvider, `反链 ${normalized.slice(0, 8)}`, content);
+	await openReadOnlyContent(deps.contentProvider, `反链 ${normalized.slice(0, 8)}`, panel.text, links);
 
 	if (report.definitions.length === 0) {
 		void vscode.window.showWarningMessage(`块 ${normalized} 不存在（可能已被删除）。`);

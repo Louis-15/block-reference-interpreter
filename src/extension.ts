@@ -24,6 +24,7 @@ import { BlockReferenceHoverProvider } from './vscode/hoverProvider';
 import { IndexService, readConfig } from './vscode/indexService';
 import { BlockReferenceInlineRenderer, describeInlineRenderer } from './vscode/inlineRenderer';
 import { ReadOnlyContentProvider, VIRTUAL_SCHEME } from './vscode/readOnlyContent';
+import { VirtualDocumentLinkProvider } from './vscode/virtualDocumentLinks';
 import { FindBacklinksTool } from './vscode/tools/findBacklinksTool';
 import { ReadBlockTool } from './vscode/tools/readBlockTool';
 import { ReadNoteTool } from './vscode/tools/readNoteTool';
@@ -46,6 +47,15 @@ export function activate(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(contentProvider);
 	context.subscriptions.push(
 		vscode.workspace.registerFileSystemProvider(VIRTUAL_SCHEME, contentProvider, { isReadonly: true }),
+	);
+
+	// 只读文档上的可点击链接（反链面板的块名）。
+	// 文本编辑器不认 Markdown 的 [](...) 语法，必须走 DocumentLink。
+	context.subscriptions.push(
+		vscode.languages.registerDocumentLinkProvider(
+			{ scheme: VIRTUAL_SCHEME },
+			new VirtualDocumentLinkProvider(contentProvider),
+		),
 	);
 	context.subscriptions.push(
 		vscode.workspace.onDidCloseTextDocument((document) => {

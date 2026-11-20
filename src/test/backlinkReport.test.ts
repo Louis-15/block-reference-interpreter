@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildBlockAncestorTitles, buildBlockPath } from '../core/blockPath';
-import { buildBacklinkReport, renderBacklinkReport } from '../core/backlinkReport';
+import { buildBacklinkReport, renderBacklinkPanel, renderBacklinkReport } from '../core/backlinkReport';
 import { parseMarkdown } from '../core/blockParser';
 import { GraphIndex } from '../core/graphIndex';
 
@@ -322,5 +322,113 @@ describe('renderBacklinkReport', () => {
 		expect(text).toContain('这里说的是');
 		// 引用外壳必须被剥掉
 		expect(text).not.toContain('((6780f110');
+	});
+});
+
+describe('renderBacklinkPanel（给人看的面板，带可点击链接）', () => {
+	/** 取第 N 行文本。 */
+	function lineAt(text: string, line: number): string {
+		return text.split('\n')[line] ?? '';
+	}
+
+	it('第二行改为被引用块的文字，不再显示行号与类型', async () => {
+		const index = await buildFixtureIndex();
+		const panel = renderBacklinkPanel(buildBacklinkReport(index, UUID));
+
+		expect(panel.text).toContain('《星落凝成糖》夜昙（黑化前）');
+
+		// 只检查链接所在行：头部「定义位置：第 N 行」是需要的，不能一起否掉。
+		for (const link of panel.links) {
+			const line = lineAt(panel.text, link.line);
+			expect(line).not.toContain('行内引用');
+			expect(line).not.toMatch(/第 \d+ 行/);
+		}
+	});
+
+	it('链接坐标精确覆盖被引用块的文字', async () => {
+		const index = await buildFixtureIndex();
+		const panel = renderBacklinkPanel(buildBacklinkReport(index, UUID));
+
+		expect(panel.links.length).toBeGreaterThan(0);
+		for (const link of panel.links) {
+			const text = lineAt(panel.text, link.line).slice(link.startColumn, link.endColumn);
+			expect(text).toBe('《星落凝成糖》夜昙（黑化前）');
+		}
+	});
+
+	it('每个链接都带正确的跳转目标与行号', async () => {
+		const index = await buildFixtureIndex();
+		const panel = renderBacklinkPanel(buildBacklinkReport(index, UUID));
+
+		// 夹具里 傲娇.md 的引用在第 2 行（0-based），傻白+中二 有两处
+		for (const link of panel.links) {
+			expect(link.targetLine).toBeGreaterThanOrEqual(0);
+			expect(link.path).toMatch(/\.md$/);
+		}
+		const paths = panel.links.map((link) => link.path);
+		expect(paths.some((path) => path.endsWith('傲娇.md'))).toBe(true);
+		expect(paths.some((path) => path.endsWith('傻白+中二.md'))).toBe(true);
+	});
+
+	it('tooltip 里补回被省略的行号与引用类型', async () => {
+		const index = await buildFixtureIndex();
+		const panel = renderBacklinkPanel(buildBacklinkReport(index, UUID));
+
+		for (const link of panel.links) {
+			expect(link.tooltip).toMatch(/第 \d+ 行/);
+			expect(link.tooltip).toContain('引用');
+		}
+	});
+
+	it('嵌入引用的类型在 tooltip 里标注', async () => {
+		const embed = new GraphIndex();
+		const files: Record<string, string> = {
+			'pages/t.md': TARGET_NOTE,
+			'pages/e.md': `- 嵌入 {{embed ((6780f110-d8e8-489f-be72-d2b3dbbc5668))}}\n`,
+		};
+		await embed.rebuild(Object.keys(files), (filePath) => Promise.resolve(files[filePath] ?? ''));
+
+		const panel = renderBacklinkPanel(buildBacklinkReport(embed, UUID));
+		expect(panel.links[0]?.tooltip).toContain('嵌入引用');
+	});
+
+	it('有面包屑时链接缩进在面包屑之下', async () => {
+		const index = await buildFixtureIndex();
+		const panel = renderBacklinkPanel(buildBacklinkReport(index, UUID));
+
+		const link = panel.links[0];
+		expect(link).toBeDefined();
+		if (!link) {
+			return;
+		}
+		// 前缀应当是缩进的列表标记
+		const prefix = lineAt(panel.text, link.line).slice(0, link.startColumn);
+		expect(prefix).toBe('  - ');
+	});
+
+	it('悬空引用没有块文字时退回行号，仍可点击', async () => {
+		const index = await buildFixtureIndex();
+		const panel = renderBacklinkPanel(buildBacklinkReport(index, '00000000-0000-0000-0000-000000000000'));
+
+		// 该 UUID 既无定义也无引用
+		expect(panel.links).toHaveLength(0);
+		expect(panel.text).toContain('没有任何笔记引用');
+	});
+
+	it('悬挂引用（有引用但块已删）用行号兜底并给出警告', async () => {
+		const dangling = new GraphIndex();
+		await dangling.rebuild(['pages/d.md'], () =>
+			Promise.resolve(`- 引用了不存在的块 ((00000000-0000-0000-0000-000000000001))\n`),
+		);
+
+		const panel = renderBacklinkPanel(buildBacklinkReport(dangling, '00000000-0000-0000-0000-000000000001'));
+		expect(panel.text).toContain('不存在');
+		expect(panel.links).toHaveLength(1);
+		// 没有块文字，链接文字退回行号
+		const link = panel.links[0];
+		expect(link).toBeDefined();
+		if (link) {
+			expect(lineAt(panel.text, link.line).slice(link.startColumn, link.endColumn)).toMatch(/第 \d+ 行/);
+		}
 	});
 });

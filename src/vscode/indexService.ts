@@ -51,6 +51,7 @@ export function readConfig() {
 		renderStripHeadingMarks: config.get<boolean>('render.stripHeadingMarks', true),
 		showIndexNotification: config.get<boolean>('showIndexNotification', true),
 		backlinkStyle: config.get<string>('backlinks.style', 'inline'),
+		backlinkPanelStyle: config.get<string>('backlinks.panel', 'html'),
 		backlinkItemsPerPage: config.get<number>('backlinks.itemsPerPage', 20),
 		backlinkPathDepth: config.get<number>('backlinks.pathDepth', 3),
 	};

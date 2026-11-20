@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "块引用解释器",
   "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
-  "version": "0.2.7",
+  "version": "0.3.0",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -294,6 +294,19 @@
           ],
           "default": "inline",
           "description": "反链计数在编辑器里的呈现方式。只有真正被引用过的块才会显示，大多数笔记不会多出任何东西。"
+        },
+        "tineBlockRef.backlinks.panel": {
+          "type": "string",
+          "enum": [
+            "html",
+            "text"
+          ],
+          "enumDescriptions": [
+            "网页面板：左键单击块名即可跳转，样式接近 Tine（默认）",
+            "只读文本文档：必须 Ctrl + 单击才能跳转，但支持 Ctrl+F 查找与自由复制"
+          ],
+          "default": "html",
+          "description": "反链面板的呈现方式。文本编辑器里的链接强制要求 Ctrl + 单击（VS Code 硬规则），只有网页面板能做到左键单击跳转。"
         },
         "tineBlockRef.backlinks.itemsPerPage": {
           "type": "number",

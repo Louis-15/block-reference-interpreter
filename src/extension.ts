@@ -16,7 +16,9 @@ import {
 	type CommandDeps,
 } from './vscode/commands/expandCommands';
 import { showBacklinksPanel } from './vscode/commands/backlinkPanel';
-import { BacklinkInlayProvider, SHOW_BACKLINKS_PANEL_COMMAND } from './vscode/backlinkInlay';
+import { openBacklinkAt } from './vscode/commands/backlinkJump';
+import { OPEN_BACKLINK_AT_COMMAND, SHOW_BACKLINKS_PANEL_COMMAND } from './vscode/backlinkCommands';
+import { BacklinkInlayProvider } from './vscode/backlinkInlay';
 import { BacklinkLensProvider } from './vscode/backlinkLens';
 import { BlockReferenceHoverProvider } from './vscode/hoverProvider';
 import { IndexService, readConfig } from './vscode/indexService';
@@ -99,9 +101,17 @@ function registerCommands(
 	);
 	register('blockReferenceInterpreter.showBacklinksAtCursor', () => showBacklinksAtCursor(deps));
 
-	// CodeLens 与手动命令共用同一个面板入口。
+	// CodeLens / 行尾徽章与手动命令共用同一个面板入口。
 	register(SHOW_BACKLINKS_PANEL_COMMAND, (uuid) =>
 		showBacklinksPanel(deps, typeof uuid === 'string' ? uuid : undefined),
+	);
+
+	// 悬停列表里点页面名时调用：直接跳到引用那一行。
+	register(OPEN_BACKLINK_AT_COMMAND, (targetPath, line) =>
+		openBacklinkAt(
+			typeof targetPath === 'string' ? targetPath : '',
+			typeof line === 'number' ? line : 0,
+		),
 	);
 
 	register('blockReferenceInterpreter.rebuildIndex', async () => {

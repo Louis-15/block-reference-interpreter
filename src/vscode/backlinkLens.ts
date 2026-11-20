@@ -1,7 +1,7 @@
 /**
  * 反链 CodeLens：在块**上方**插入一行「N 条链接引用」。
  *
- * 默认不启用 —— 反链用 `backlinkInlay.ts` 的右侧徽章呈现（更贴近 Tine）。
+ * 默认不启用 —— 反链用 `backlinkInlay.ts` 的行尾徽章呈现（更贴近 Tine）。
  * 保留本模块的原因：InlayHint 受 VS Code 全局设置 `editor.inlayHints.enabled`
  * 控制，用户一旦关掉它就完全看不到反链，且没有任何提示。
  * 此时把 `tineBlockRef.backlinks.style` 切成 `lens` 仍能显示。
@@ -9,13 +9,9 @@
 
 import * as vscode from 'vscode';
 
-import {
-	BacklinkAnchorCache,
-	formatAnchorTooltip,
-	shouldShowBacklinks,
-	type AnchorDeps,
-} from './backlinkAnchors';
-import { SHOW_BACKLINKS_PANEL_COMMAND } from './backlinkInlay';
+import { formatTooltipText } from '../core/backlinkBadge';
+import { BacklinkAnchorCache, shouldShowBacklinks, type AnchorDeps } from './backlinkAnchors';
+import { SHOW_BACKLINKS_PANEL_COMMAND } from './backlinkCommands';
 
 export class BacklinkLensProvider implements vscode.CodeLensProvider, vscode.Disposable {
 	private readonly anchors = new BacklinkAnchorCache();
@@ -70,7 +66,8 @@ export class BacklinkLensProvider implements vscode.CodeLensProvider, vscode.Dis
 			lenses.push(
 				new vscode.CodeLens(range, {
 					title: parts.join(' '),
-					tooltip: formatAnchorTooltip(anchor),
+					// CodeLens 的 tooltip 只接受 string，拿不到可点击链接。
+					tooltip: formatTooltipText(anchor.tooltip),
 					command: SHOW_BACKLINKS_PANEL_COMMAND,
 					arguments: [anchor.uuid],
 				}),

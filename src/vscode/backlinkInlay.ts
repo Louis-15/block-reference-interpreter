@@ -11,16 +11,10 @@
 
 import * as vscode from 'vscode';
 
-import {
-	BacklinkAnchorCache,
-	formatAnchorLabel,
-	formatAnchorTooltip,
-	shouldShowBacklinks,
-	type AnchorDeps,
-} from './backlinkAnchors';
-
-/** 命令：打开反链面板。 */
-export const SHOW_BACKLINKS_PANEL_COMMAND = 'blockReferenceInterpreter.showBacklinksPanel';
+import { formatAnchorLabel } from '../core/backlinkBadge';
+import { BacklinkAnchorCache, shouldShowBacklinks, type AnchorDeps } from './backlinkAnchors';
+import { SHOW_BACKLINKS_PANEL_COMMAND } from './backlinkCommands';
+import { buildAnchorTooltip } from './backlinkTooltip';
 
 export class BacklinkInlayProvider implements vscode.InlayHintsProvider, vscode.Disposable {
 	private readonly anchors = new BacklinkAnchorCache();
@@ -83,7 +77,6 @@ export class BacklinkInlayProvider implements vscode.InlayHintsProvider, vscode.
 
 			// 点击能力只能挂在 InlayHintLabelPart 上，InlayHint 本身没有 command 属性。
 			const part = new vscode.InlayHintLabelPart(formatAnchorLabel(anchor));
-			part.tooltip = new vscode.MarkdownString(formatAnchorTooltip(anchor));
 			part.command = {
 				title: '打开反链面板',
 				command: SHOW_BACKLINKS_PANEL_COMMAND,
@@ -99,7 +92,12 @@ export class BacklinkInlayProvider implements vscode.InlayHintsProvider, vscode.
 
 			// 与行内正文拉开一点距离，否则会紧贴最后一个字。
 			hint.paddingLeft = true;
-			hint.tooltip = new vscode.MarkdownString(formatAnchorTooltip(anchor));
+
+			/*
+			 * 只设 hint 级 tooltip，**不要**再给 part 设 tooltip。
+			 * 两处都设会让悬停框把同一段文字显示两遍（实测踩过）。
+			 */
+			hint.tooltip = buildAnchorTooltip(anchor);
 
 			hints.push(hint);
 		}

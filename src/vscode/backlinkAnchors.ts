@@ -8,11 +8,14 @@
 import * as vscode from 'vscode';
 
 import { parseMarkdown } from '../core/blockParser';
-import type { BacklinkAnchor } from '../core/backlinkBadge';
+import { buildAnchorFromReport, type BacklinkAnchor } from '../core/backlinkBadge';
 import { buildBacklinkReport } from '../core/backlinkReport';
 import type { GraphIndex } from '../core/graphIndex';
 
 export type { BacklinkAnchor };
+
+/** 悬停列表最多列几个页面。 */
+const MAX_TOOLTIP_PAGES = 8;
 
 /** 锚点收集所需的依赖。 */
 export interface AnchorDeps {
@@ -80,13 +83,7 @@ export class BacklinkAnchorCache {
 					continue;
 				}
 
-				anchors.push({
-					uuid: block.id,
-					line: block.startLine,
-					count: report.itemCount,
-					hitCount: report.hitCount,
-					duplicate: report.definitions.length > 1,
-				});
+				anchors.push(buildAnchorFromReport(report, block.startLine, MAX_TOOLTIP_PAGES));
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				deps.log(`[错误] 统计块 ${block.id} 的反链失败：${message}`);
@@ -120,11 +117,3 @@ export function shouldShowBacklinks(
 	}
 	return deps.isIndexedFile(document.uri.fsPath);
 }
-
-/**
- * 生成 InlayHint / CodeLens 上显示的文字。
- *
- * 具体文案在 core 层的 `backlinkBadge.ts` 里实现并单测，
- * 这里只做转发，避免两个 provider 各写一套。
- */
-export { formatAnchorLabel, formatAnchorTooltip } from '../core/backlinkBadge';

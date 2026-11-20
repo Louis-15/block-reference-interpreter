@@ -227,7 +227,7 @@ function toDisplayPath(filePath: string, graphRoot?: string): string {
 }
 
 /** 取文件名（不含目录与扩展名），用作「页面名」。 */
-function toPageName(filePath: string): string {
+export function toPageName(filePath: string): string {
 	const normalized = filePath.replace(/\\/g, '/');
 	const base = normalized.slice(normalized.lastIndexOf('/') + 1);
 	return base.replace(/\.md$/i, '');

@@ -1,0 +1,104 @@
+# 打标签（v*）后自动发布到 VS Code 扩展市场与 GitHub Release。
+#
+# 认证方式为 Trusted Publishing（OIDC 联邦身份），不存储任何长期凭据。
+# 微软已于 2026 年 12 月 1 日退役 Azure DevOps 全局 PAT，因此不使用 PAT。
+#
+# 使用前必须在扩展市场发布者页面下方创建 Trusted Publishing 政策：
+#   Repository owner: Louis-15
+#   Repository:       block-reference-interpreter
+#   Workflow:         release.yml        ← 必须与本文件名一致
+#   Environment:      留空
+#
+# 发布顺序经过刻意设计：先测试、再发布市场、最后创建 GitHub Release。
+# 市场发布失败时不会留下「有 Release 但商店没有」的不一致状态。
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# 同一标签重复触发时取消上一轮，避免市场端重复发布报错
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      # 创建 GitHub Release 并上传附件需要写权限
+      contents: write
+      # Trusted Publishing 换取市场凭据需要 OIDC 令牌
+      id-token: write
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 标签与 package.json 版本不一致时，市场会拒绝发布。
+      # 在最早阶段拦下来，比等到发布步骤失败更省排查时间。
+      - name: 校验标签与版本号一致
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          echo "标签版本: ${TAG_VERSION}"
+          echo "包内版本: ${PKG_VERSION}"
+          if [ "${TAG_VERSION}" != "${PKG_VERSION}" ]; then
+            echo "::error::标签 ${GITHUB_REF_NAME} 与 package.json 版本 ${PKG_VERSION} 不一致"
+            exit 1
+          fi
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 构建
+        run: npm run build
+
+      # --allow-missing-repository 不加：本仓库有 repository 字段，
+      # vsce 会据此生成市场页面的「源代码」链接。
+      - name: 打包扩展
+        run: |
+          npx vsce package --out "block-reference-interpreter-${GITHUB_REF_NAME#v}.vsix"
+
+      # 笔记库指令包不进版本库（由 templates/ 生成），因此必须在 CI 内现做。
+      # 压缩包内的路径必须是 .github/instructions/...，不能带外层目录，
+      # 否则用户解压到笔记库根目录时会多出一层文件夹导致指令不生效。
+      - name: 生成笔记库指令包
+        run: |
+          mkdir -p stage/.github/instructions
+          cp templates/github/instructions/block-reference.instructions.md \
+             stage/.github/instructions/
+          cd stage
+          zip -r ../notebook-instructions.zip .github
+          cd ..
+          echo '--- 压缩包内容（应为 .github/instructions/... 三层）---'
+          unzip -l notebook-instructions.zip
+
+      - name: 发布到扩展市场
+        run: |
+          npx vsce publish --oidc \
+            --packagePath "block-reference-interpreter-${GITHUB_REF_NAME#v}.vsix"
+
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "block-reference-interpreter-${GITHUB_REF_NAME#v}.vsix" \
+            notebook-instructions.zip \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

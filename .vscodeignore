@@ -17,3 +17,5 @@ notebook-instructions.zip
 *.code-workspace
 # CI 配置与发布流程，不属于扩展运行时内容
 .github/**
+# 面向开发者的协作文档，随仓库分发，不进扩展包
+AGENTS.md

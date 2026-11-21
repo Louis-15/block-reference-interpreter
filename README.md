@@ -752,7 +752,11 @@ notebook-instructions.zip
         └── block-reference.instructions.md
 ```
 
-生成方式（PowerShell，显式写入条目名以规避路径分隔符差异）：
+**该压缩包由 CI 自动生成**，无需本地打包。工作流 `.github/workflows/release.yml`
+会在发布前从 `templates/` 现场构建，并打印压缩包内容以便核对层级。
+
+需要在本地手动生成时（例如调试工作流），使用下述 PowerShell 脚本。显式写入
+条目名可以规避不同平台间的路径分隔符差异：
 
 ```powershell
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -764,7 +768,29 @@ $stream.Write($bytes, 0, $bytes.Length)
 $stream.Dispose(); $zip.Dispose()
 ```
 
-打包后**必须解压验证**：确认 `.github` 目录未被隐藏、文件哈希与模板一致、首字节不是 BOM。
+打包后**必须解压验证**：压缩包内必须是三层路径 `.github/instructions/文件名`，
+多一层目录会导致用户解压后指令不生效。
+
+> **关于行尾符**：CI 在 Linux 上检出代码，生成的压缩包内文件为 LF 行尾；
+> Windows 本地生成的为 CRLF。两者内容一致，功能无差异，因此无需强制统一。
+
+## 发版流程
+
+版本号变更已全部自动化。发版只需三步：
+
+1. 修改 `package.json` 的 `version`，并在 `CHANGELOG.md` 补充对应条目
+2. 提交并推送到 `main`
+3. 创建并推送标签：`git tag -a v0.3.6 -m "v0.3.6"; git push origin refs/tags/v0.3.6`
+
+标签推送后，工作流会依次执行：校验标签与版本一致 → 类型检查 → 单元测试 →
+构建 → 打包 → 发布扩展市场 → 创建 GitHub Release 并上传两个附件。
+
+认证使用 **Trusted Publishing（OIDC 联邦身份）**，仓库中不存储任何长期凭据。
+首次配置需在扩展市场发布者页面的 Trusted Publishing 中创建政策，填入仓库
+owner、仓库名与工作流文件名（`release.yml`），三者须精确匹配。
+
+> 微软已于 2026 年 12 月 1 日退役 Azure DevOps 全局 PAT，因此本项目不采用
+> PAT 方案。若需了解背景，参见 Visual Studio Marketplace Trusted Publishing 文档。
 
 ## 工具内部名与引用名
 

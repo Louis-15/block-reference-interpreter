@@ -27,6 +27,7 @@ import { normalizeUuid } from '../tools/common';
 import { ReusableWebviewPanel } from '../reusableWebview';
 import { openBacklinkAt } from './backlinkJump';
 import type { ReadOnlyContentProvider } from '../readOnlyContent';
+import { t } from '../../core/i18n';
 
 /** 展开全文面板的 Webview 类型（同类面板会被复用）。 */
 const EXPAND_VIEW_TYPE = 'blockReferenceInterpreter.expandPanel';
@@ -53,7 +54,7 @@ function showExpandPanel(
 		(nonce) => renderExpandHtml(view, { nonce }).html,
 		(path, line) => void openBacklinkAt(path, line),
 	);
-	deps.log(`[展开] 已打开：${title}`);
+	deps.log(t('[Expand] Opened: {0}', title));
 }
 
 /**
@@ -65,7 +66,7 @@ function showExpandPanel(
 export async function expandCurrentNote(deps: CommandDeps): Promise<void> {
 	const editor = vscode.window.activeTextEditor;
 	if (!editor || editor.document.languageId !== 'markdown') {
-		void vscode.window.showWarningMessage('请先打开一个 Markdown 笔记文件。');
+		void vscode.window.showWarningMessage(t('Open a Markdown note file first.'));
 		return;
 	}
 
@@ -74,7 +75,7 @@ export async function expandCurrentNote(deps: CommandDeps): Promise<void> {
 	const parsed = parseMarkdown(document.uri.fsPath, document.getText());
 
 	if (parsed.references.length === 0) {
-		void vscode.window.showInformationMessage('这篇笔记里没有块引用，无需展开。');
+		void vscode.window.showInformationMessage(t('This note has no block references, nothing to expand.'));
 		return;
 	}
 
@@ -94,9 +95,9 @@ export async function expandCurrentNote(deps: CommandDeps): Promise<void> {
 		},
 	);
 
-	showExpandPanel(deps, `${document.fileName} 展开`, view);
+	showExpandPanel(deps, t('{0} expansion', document.fileName), view);
 	void vscode.window.showInformationMessage(
-		`已展开 ${parsed.references.length} 处块引用。`,
+		t('Expanded {0} block references.', parsed.references.length),
 	);
 }
 
@@ -109,7 +110,7 @@ export async function expandCurrentNote(deps: CommandDeps): Promise<void> {
 export async function expandBlockAtCursor(deps: CommandDeps): Promise<void> {
 	const editor = vscode.window.activeTextEditor;
 	if (!editor || editor.document.languageId !== 'markdown') {
-		void vscode.window.showWarningMessage('请先打开一个 Markdown 笔记文件。');
+		void vscode.window.showWarningMessage(t('Open a Markdown note file first.'));
 		return;
 	}
 
@@ -119,7 +120,7 @@ export async function expandBlockAtCursor(deps: CommandDeps): Promise<void> {
 
 	if (!located) {
 		void vscode.window.showWarningMessage(
-			'光标不在块引用上。请把光标放到形如 ((uuid)) 的位置再执行，或改用「展开当前笔记」。',
+			t('The cursor is not on a block reference. Place it on something like ((uuid)) and try again, or use "Expand Current Note" instead.'),
 		);
 		return;
 	}
@@ -134,8 +135,8 @@ export async function expandBlockAtCursor(deps: CommandDeps): Promise<void> {
  */
 export async function expandBlockById(deps: CommandDeps, uuid?: string): Promise<void> {
 	const raw = uuid ?? (await vscode.window.showInputBox({
-		title: '展开块引用',
-		prompt: '输入块 UUID（可带 (( )) 包裹）',
+		title: t('Expand a block reference'),
+		prompt: t('Enter a block UUID (a (( )) wrapper is accepted)'),
 		placeHolder: '66c73a56-ddda-44d2-80dd-009e44406fd4',
 		ignoreFocusOut: true,
 	}));
@@ -146,7 +147,7 @@ export async function expandBlockById(deps: CommandDeps, uuid?: string): Promise
 
 	const normalized = normalizeUuid(raw);
 	if (!normalized) {
-		void vscode.window.showWarningMessage('UUID 为空，已取消。');
+		void vscode.window.showWarningMessage(t('The UUID is empty; cancelled.'));
 		return;
 	}
 
@@ -159,12 +160,12 @@ export async function expandBlockById(deps: CommandDeps, uuid?: string): Promise
 		stripHeading: config.renderStripHeadingMarks,
 	});
 
-	showExpandPanel(deps, `块 ${normalized.slice(0, 8)}`, view);
+	showExpandPanel(deps, t('Block {0}', normalized.slice(0, 8)), view);
 
 	// 块不存在时给一条明确提示：网页里也有警告，但标签页可能被切到后台。
 	const firstBlock = view.flow[0];
 	if (firstBlock && firstBlock.type === 'block' && !firstBlock.block.source) {
-		void vscode.window.showWarningMessage(`未找到块 ${normalized}，可能已被删除。`);
+		void vscode.window.showWarningMessage(t('Block {0} not found; it may have been deleted.', normalized));
 	}
 }
 
@@ -192,8 +193,8 @@ export async function showBacklinks(deps: CommandDeps, uuid?: string): Promise<v
 
 	if (!normalized) {
 		const raw = await vscode.window.showInputBox({
-			title: '查看块的反向链接',
-			prompt: '输入块 UUID（可带 (( )) 包裹）',
+			title: t('Show backlinks for a block'),
+			prompt: t('Enter a block UUID (a (( )) wrapper is accepted)'),
 			placeHolder: '66c73a56-ddda-44d2-80dd-009e44406fd4',
 			ignoreFocusOut: true,
 		});
@@ -214,9 +215,11 @@ export async function showBacklinks(deps: CommandDeps, uuid?: string): Promise<v
 
 	if (entries.length === 0) {
 		const detail = definitions.length === 0
-			? '该 UUID 对应的块也不存在（可能已被删除）。'
-			: '该块存在，但没有任何笔记引用它。';
-		void vscode.window.showInformationMessage(`没有找到对 ${normalized} 的引用。${detail}`);
+			? t('The block for this UUID does not exist either (it may have been deleted).')
+			: t('The block exists, but no note references it.');
+		void vscode.window.showInformationMessage(
+			t('No references found for {0}. {1}', normalized, detail),
+		);
 		return;
 	}
 
@@ -228,7 +231,7 @@ export async function showBacklinks(deps: CommandDeps, uuid?: string): Promise<v
 
 		return {
 			label: `$(file) ${relative}:${entry.hit.line + 1}`,
-			description: entry.hit.kind === 'embed' ? '嵌入引用' : '行内引用',
+			description: entry.hit.kind === 'embed' ? t('embedded reference') : t('inline reference'),
 			detail: context.slice(0, 160),
 			target: vscode.Uri.file(entry.path),
 			line: entry.hit.line,
@@ -236,8 +239,8 @@ export async function showBacklinks(deps: CommandDeps, uuid?: string): Promise<v
 	});
 
 	const picked = await vscode.window.showQuickPick(items, {
-		title: `块 ${normalized} 的反向链接（${entries.length} 处）`,
-		placeHolder: '选择一处引用即可跳转',
+		title: t('Backlinks for block {0} ({1} references)', normalized, entries.length),
+		placeHolder: t('Select a reference to jump to it'),
 		matchOnDetail: true,
 	});
 

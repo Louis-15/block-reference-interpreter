@@ -7,8 +7,9 @@
  */
 
 import * as path from 'node:path';
-
 import * as vscode from 'vscode';
+
+import { t } from '../../core/i18n';
 
 /** 把工具结果包成 VS Code 能识别的文本结果。 */
 export function textResult(text: string): vscode.LanguageModelToolResult {
@@ -78,7 +79,7 @@ export function truncate(text: string, maxChars: number): string {
 	if (text.length <= maxChars) {
 		return text;
 	}
-	return `${text.slice(0, maxChars)}\n\n（输出超过 ${maxChars} 字符上限，已截断）`;
+	return `${text.slice(0, maxChars)}\n\n${t('(output exceeded the {0} character limit and was truncated)', maxChars)}`;
 }
 
 /**

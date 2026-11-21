@@ -11,6 +11,7 @@
 
 import type { ExpandBlock, ExpandView } from './expandView';
 import { escapeHtml, safeJson } from './htmlText';
+import { locale, t } from './i18n';
 
 /** 渲染选项。 */
 export interface ExpandHtmlOptions {
@@ -187,9 +188,11 @@ function renderBlock(
 		const label = block.lineRange
 			? `${block.source.displayPath} ${block.lineRange}`
 			: block.source.displayPath;
-		parts.push('<span class="lbl">来源</span>');
+		parts.push(`<span class="lbl">${escapeHtml(t('Source'))}</span>`);
 		parts.push(
-			`<a class="src-link" data-i="${index}" title="打开这篇笔记并跳到第 ${block.source.line + 1} 行">${escapeHtml(label)}</a>`,
+			`<a class="src-link" data-i="${index}" title="${escapeHtml(
+				t('Open this note and jump to line {0}', block.source.line + 1),
+			)}">${escapeHtml(label)}</a>`,
 		);
 	}
 
@@ -267,11 +270,11 @@ export function renderExpandHtml(
 	if (view.summary) {
 		body.push(`<div class="summary">${escapeHtml(view.summary)}</div>`);
 	}
-	body.push('<div class="hint">单击块上方的「来源」链接，可直接打开对应笔记并跳到该块。</div>');
+	body.push(`<div class="hint">${escapeHtml(t('Click the Source link above a block to open that note at the block.'))}</div>`);
 	body.push('</header>');
 
 	if (view.flow.length === 0) {
-		body.push('<p class="empty">没有可显示的内容。</p>');
+		body.push(`<p class="empty">${escapeHtml(t('Nothing to display.'))}</p>`);
 	}
 
 	let hasBlock = false;
@@ -285,11 +288,11 @@ export function renderExpandHtml(
 	}
 
 	if (!hasBlock && view.flow.length > 0) {
-		body.push('<p class="empty">这篇笔记里没有块引用，无需展开。</p>');
+		body.push(`<p class="empty">${escapeHtml(t('This note has no block references, nothing to expand.'))}</p>`);
 	}
 
 	const html = `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${escapeHtml(locale())}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${options.nonce}'; script-src 'nonce-${options.nonce}';">

@@ -6,5 +6,7 @@ export default defineConfig({
 		include: ['src/test/**/*.test.ts'],
 		environment: 'node',
 		reporters: ['default'],
+		// 全局注入中文 bundle，让既有的中文断言在源码英文化之后继续有效。
+		setupFiles: ['./vitest.setup.ts'],
 	},
 });

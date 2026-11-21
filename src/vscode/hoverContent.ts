@@ -19,6 +19,7 @@ import * as vscode from 'vscode';
 import type { BlockLookupResult, GraphIndex } from '../core/graphIndex';
 import { getBlockTitle, measureSubtree, renderBlockTree, stripHeadingMarks } from '../core/render';
 import { encodeCommandArgs } from './tools/common';
+import { t } from '../core/i18n';
 
 /** 构建悬停内容所需的配置。 */
 export interface HoverContentConfig {
@@ -45,7 +46,7 @@ export interface HoverContentConfig {
  * 再多一条需要记快捷键的路径反而多余。
  */
 function buildExpandLink(uuid: string): string {
-	return `[展开全文](command:blockReferenceInterpreter.expandBlockById?${encodeCommandArgs([uuid])})`;
+	return `[${t('Expand full text')}](command:blockReferenceInterpreter.expandBlockById?${encodeCommandArgs([uuid])})`;
 }
 
 /**
@@ -68,14 +69,16 @@ export function buildBlockHover(
 	const candidates = index.lookupBlocks(uuid);
 
 	if (candidates.length === 0) {
-		markdown.appendMarkdown('**⚠ 未找到该块**\n\n');
-		markdown.appendMarkdown(`UUID \`${uuid}\` 没有对应的块。可能已被删除，或引用来自其他图谱。`);
+		markdown.appendMarkdown(`${t('**⚠ Block not found**')}\n\n`);
+		markdown.appendMarkdown(
+			t('UUID `{0}` has no matching block. It may have been deleted, or the reference comes from another graph.', uuid),
+		);
 		return markdown;
 	}
 
 	if (candidates.length > 1) {
 		markdown.appendMarkdown(
-			`**⚠ 该 UUID 在 ${candidates.length} 处重复定义**（可能被复制粘贴过），以下是全部候选：\n\n`,
+			`${t('**⚠ This UUID is defined in {0} places** (it may have been copied and pasted). All candidates are listed below:', candidates.length)}\n\n`,
 		);
 	}
 
@@ -90,13 +93,13 @@ export function buildBlockHover(
 		}
 
 		if (candidates.length > 1) {
-			markdown.appendMarkdown(`---\n\n**候选 ${candidateIndex + 1} / ${candidates.length}**\n\n`);
+			markdown.appendMarkdown(`---\n\n${t('**Candidate {0} / {1}**', candidateIndex + 1, candidates.length)}\n\n`);
 		}
 
 		const size = measureSubtree(candidate.parsed, candidate.blockIndex);
 		const sourcePath = vscode.workspace.asRelativePath(candidate.location.path, false).replace(/\\/g, '/');
 		markdown.appendMarkdown(
-			`\`${sourcePath}\` 第 ${block.startLine + 1} 行 · ${size.lines} 行 / ${size.chars} 字符\n\n`,
+			`${t('`{0}` line {1} · {2} lines / {3} characters', sourcePath, block.startLine + 1, size.lines, size.chars)}\n\n`,
 		);
 
 		const rawTitle = getBlockTitle(block.ownLines[0] ?? '');
@@ -173,7 +176,7 @@ export function getInlineTitle(
 	const candidates = index.lookupBlocks(uuid);
 
 	if (candidates.length === 0) {
-		return showMissing ? '⚠ 块不存在' : undefined;
+		return showMissing ? t('⚠ Block not found') : undefined;
 	}
 
 	const first = candidates[0];
@@ -190,10 +193,10 @@ export function getInlineTitle(
 		title = stripHeadingMarks(title);
 	}
 	if (title.length === 0) {
-		title = '（空块）';
+		title = t('(empty block)');
 	}
 	if (candidates.length > 1) {
-		title = `${title}（${candidates.length} 处重复）`;
+		title = t('{0} ({1} duplicates)', title, candidates.length);
 	}
 
 	return truncateTitle(title, maxTitleLength);

@@ -8,6 +8,7 @@
 import * as vscode from 'vscode';
 
 import { parseMarkdown } from '../core/blockParser';
+import { t } from '../core/i18n';
 import { buildAnchorFromReport, type BacklinkAnchor } from '../core/backlinkBadge';
 import { buildBacklinkReport } from '../core/backlinkReport';
 import type { GraphIndex } from '../core/graphIndex';
@@ -89,7 +90,7 @@ export class BacklinkAnchorCache {
 				anchors.push(buildAnchorFromReport(report, block.startLine, MAX_TOOLTIP_PAGES));
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				deps.log(`[错误] 统计块 ${block.id} 的反链失败：${message}`);
+				deps.log(t('[Error] Failed to count backlinks for block {0}: {1}', block.id, message));
 			}
 		}
 

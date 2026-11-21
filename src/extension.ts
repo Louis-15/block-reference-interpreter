@@ -24,16 +24,22 @@ import { BlockReferenceHoverProvider } from './vscode/hoverProvider';
 import { IndexService, readConfig } from './vscode/indexService';
 import { BlockReferenceInlineRenderer, describeInlineRenderer } from './vscode/inlineRenderer';
 import { ReadOnlyContentProvider, VIRTUAL_SCHEME } from './vscode/readOnlyContent';
+import { installTranslator } from './vscode/l10nSetup';
+import { t } from './core/i18n';
 import { VirtualDocumentLinkProvider } from './vscode/virtualDocumentLinks';
 import { FindBacklinksTool } from './vscode/tools/findBacklinksTool';
 import { ReadBlockTool } from './vscode/tools/readBlockTool';
 import { ReadNoteTool } from './vscode/tools/readNoteTool';
 
-/** 输出通道名，便于用户在输出面板里筛。 */
-const OUTPUT_CHANNEL_NAME = '块引用解读工具';
+/** 输出通道名由 t() 提供，跟随 `tineBlockRef.language` 设置。 */
 
 export function activate(context: vscode.ExtensionContext): void {
-	const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+	// 必须最先安装：core 层后续所有 t() 调用都依赖它取到当前语言的 bundle。
+	installTranslator(context);
+
+	const output = vscode.window.createOutputChannel(
+		t('Block Reference Interpreter'),
+	);
 	const log = (message: string): void => {
 		output.appendLine(message);
 	};
@@ -78,6 +84,30 @@ export function activate(context: vscode.ExtensionContext): void {
 	registerInlineRenderer(context, indexService, deps, log);
 	registerBacklinkMarkers(context, indexService, deps, log);
 	registerLanguageModelTools(context, indexService, log);
+
+	/*
+	 * 语言设置变化：重装翻译器即可让后续文案立刻换语言。
+	 * 已经渲染出来的东西（悬停框、已打开的面板）不会自动重绘，
+	 * 所以提示用户重载一次，避免出现新旧语言混排的界面。
+	 */
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((event) => {
+			if (!event.affectsConfiguration('tineBlockRef.language')) {
+				return;
+			}
+			installTranslator(context);
+			void vscode.window
+				.showInformationMessage(
+					t('Language changed. Reload the window to apply it to everything already on screen.'),
+					t('Reload'),
+				)
+				.then((picked) => {
+					if (picked) {
+						void vscode.commands.executeCommand('workbench.action.reloadWindow');
+					}
+				});
+		}),
+	);
 
 	// 后台初始化：不阻塞激活，用到索引的功能会自己 await。
 	indexService.initialize();
@@ -127,7 +157,7 @@ function registerCommands(
 	register('blockReferenceInterpreter.rebuildIndex', async () => {
 		// 完成提示统一由 indexService 的右下角通知负责，这里只显示进度，避免弹两次。
 		await vscode.window.withProgress(
-			{ location: vscode.ProgressLocation.Window, title: '块引用解读工具：重建索引' },
+			{ location: vscode.ProgressLocation.Window, title: t('Block Reference Interpreter: rebuilding the index') },
 			() => indexService.rebuild({ notify: true }),
 		);
 	});
@@ -153,7 +183,7 @@ function registerHover(context: vscode.ExtensionContext, deps: CommandDeps): voi
 		// 只对 Markdown 生效；provider 内部还会再判断是否在图谱目录内。
 		vscode.languages.registerHoverProvider([{ language: 'markdown' }], provider),
 	);
-	deps.log('[悬停] 已注册 Markdown 悬停预览提供者');
+	deps.log(t('[Hover] Markdown hover preview provider registered'));
 
 	// 文档关闭时释放该文档的扫描缓存，避免长会话里缓存越积越多。
 	context.subscriptions.push(
@@ -184,10 +214,10 @@ function registerInlineRenderer(
 		.then(() => renderer.renderAllVisible())
 		.catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : String(error);
-			log(`[错误] 首轮行内渲染失败：${message}`);
+			log(t('[Error] The first inline rendering pass failed: {0}', message));
 		});
 
-	log(`[渲染] ${describeInlineRenderer()}`);
+	log(t('[Render] {0}', describeInlineRenderer()));
 }
 
 /**
@@ -249,10 +279,10 @@ function registerBacklinkMarkers(
 		.then(refreshAll)
 		.catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : String(error);
-			log(`[错误] 反链标记首轮刷新失败：${message}`);
+			log(t('[Error] The first backlink marker refresh failed: {0}', message));
 		});
 
-	log('[反链] 已注册反链标记（块行尾显示 🔗 N，点击打开反链面板）');
+	log(t('[Backlinks] Backlink markers registered (badge at the end of the block line; click to open the backlinks panel)'));
 }
 
 /**
@@ -267,7 +297,11 @@ function registerLanguageModelTools(
 	log: (message: string) => void,
 ): void {
 	if (!vscode.lm || typeof vscode.lm.registerTool !== 'function') {
-		log('[提示] 当前 VS Code 版本不支持 Language Model Tool，AI 工具未注册。命令功能不受影响。');
+		log(
+			t(
+				'[Info] This VS Code version does not support Language Model Tool; the AI tools were not registered. Command features are unaffected.',
+			),
+		);
 		return;
 	}
 
@@ -284,10 +318,10 @@ function registerLanguageModelTools(
 				new FindBacklinksTool(getIndex, ensureReady, getGraphRoot),
 			),
 		);
-		log('[工具] 已注册 3 个 AI 工具：readBlock / readNote / findBacklinks');
+		log(t('[Tools] Registered 3 AI tools: readBlock / readNote / findBacklinks'));
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		log(`[错误] 注册 AI 工具失败：${message}`);
+		log(t('[Error] Failed to register the AI tools: {0}', message));
 	}
 }
 

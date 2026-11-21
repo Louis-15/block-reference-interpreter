@@ -1,8 +1,8 @@
 {
   "name": "block-reference-interpreter",
-  "displayName": "块引用解读工具",
-  "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
-  "version": "0.3.6",
+  "displayName": "%blockReferenceInterpreter.displayName%",
+  "description": "%blockReferenceInterpreter.description%",
+  "version": "0.4.0",
   "publisher": "louis-15",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -28,6 +28,7 @@
     "copilot"
   ],
   "main": "./dist/extension.js",
+  "l10n": "./l10n",
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -42,9 +43,9 @@
     "languageModelTools": [
       {
         "name": "tineBlockRef_readBlock",
-        "displayName": "读取块引用内容",
-        "userDescription": "按 UUID 读取 Tine / Logseq 块及其全部子块内容",
-        "modelDescription": "读取 Tine / Logseq 笔记中的块引用（形如 ((uuid)) 的 UUID）所指向的真实内容。\n\n当你在 .md 笔记里看到 ((66c73a56-ddda-44d2-80dd-009e44406fd4)) 或 {{embed ((66c73a56-...))}} 时，必须调用本工具才能知道它指向什么内容——UUID 本身不包含任何语义信息。\n\n返回：目标块的首行正文、全部子块（保留层级缩进）、来源文件与行号、子树规模。若目标块不存在会明确说明（悬空引用），若同一 UUID 在多个位置重复定义会列出全部候选。\n\n适用：理解笔记中「参见 ((uuid))」的含义、展开某个块的具体条目、跨文件追踪知识关联。\n不适用：读取整篇笔记（请用 blockNote）、解析 [[页面名]] 链接（本工具不处理）。",
+        "displayName": "%tineBlockRef_readBlock.displayName%",
+        "userDescription": "%tineBlockRef_readBlock.userDescription%",
+        "modelDescription": "%tineBlockRef_readBlock.modelDescription%",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "blockRef",
         "icon": "$(references)",
@@ -56,19 +57,19 @@
               "items": {
                 "type": "string"
               },
-              "description": "要读取的块 UUID 列表，最多 20 个。可带 (( )) 包裹，会自动剥离。"
+              "description": "%tineBlockRef_readBlock.blockIds.description%"
             },
             "includeChildren": {
               "type": "boolean",
-              "description": "是否包含子块，默认 true。子块通常才是内容的正文，除非只需要标题否则不要关闭。"
+              "description": "%tineBlockRef_readBlock.includeChildren.description%"
             },
             "compact": {
               "type": "boolean",
-              "description": "紧凑模式：每个块只输出首行正文，用于快速浏览大量块。默认 false。"
+              "description": "%tineBlockRef_readBlock.compact.description%"
             },
             "maxDepth": {
               "type": "number",
-              "description": "嵌套块引用（引用里再引用）的展开层数，默认取插件设置（3）。0 表示不展开嵌套引用。"
+              "description": "%tineBlockRef_readBlock.maxDepth.description%"
             }
           },
           "required": [
@@ -78,9 +79,9 @@
       },
       {
         "name": "tineBlockRef_readNote",
-        "displayName": "读取笔记并展开块引用",
-        "userDescription": "读取整篇 Tine / Logseq 笔记，自动展开其中的所有块引用",
-        "modelDescription": "读取一整篇 Tine / Logseq 笔记，并把其中的所有 ((uuid)) 块引用展开为真实内容。\n\n**当需要阅读 pages/ 或 journals/ 目录下的 .md 笔记时，优先使用本工具而不是普通文件读取工具**：普通读取只能看到一串 UUID，看不到被引用的内容，会让你遗漏关键上下文并给出片面结论。\n\nmode 参数（重要，直接影响输出大小）：\n- expand（默认）：整篇展开。引用超过 8 处时会自动附带清单；超出输出预算的部分不会展开，并在末尾明确列出未展开的行号。\n- list：**只返回引用清单**（行号、UUID、目标块首行），通常只有几 KB。引用很多（>10 处）、或你只需要定位某个引用时，**优先用这个模式**，再用 blockRef 按需读取具体块。\n- both：清单 + 展开内容。\n\n用法建议：\n1. 不确定这篇笔记有多少引用时，先用 mode=list。\n2. 需要正文语义时用 mode=expand。\n3. 若返回结果提示「以下 N 处未展开」，用 blockRef 逐个读取那些 UUID，不要改用普通文件读取。\n\n返回内容在内存中生成，不会创建或修改任何文件。若该文件正被编辑器打开且有未保存修改，读取的是编辑器里的当前内容。",
+        "displayName": "%tineBlockRef_readNote.displayName%",
+        "userDescription": "%tineBlockRef_readNote.userDescription%",
+        "modelDescription": "%tineBlockRef_readNote.modelDescription%",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "blockNote",
         "icon": "$(book)",
@@ -89,7 +90,7 @@
           "properties": {
             "filePath": {
               "type": "string",
-              "description": "笔记文件路径。可以是绝对路径，也可以是相对图谱根的路径，例如 pages/某笔记.md。"
+              "description": "%tineBlockRef_readNote.filePath.description%"
             },
             "mode": {
               "type": "string",
@@ -98,15 +99,15 @@
                 "list",
                 "both"
               ],
-              "description": "输出模式，默认 expand。"
+              "description": "%tineBlockRef_readNote.mode.description%"
             },
             "includeChildren": {
               "type": "boolean",
-              "description": "展开块时是否包含子块，默认 true。"
+              "description": "%tineBlockRef_readNote.includeChildren.description%"
             },
             "maxDepth": {
               "type": "number",
-              "description": "嵌套引用展开层数，默认取插件设置（3）。"
+              "description": "%tineBlockRef_readNote.maxDepth.description%"
             }
           },
           "required": [
@@ -116,9 +117,9 @@
       },
       {
         "name": "tineBlockRef_findBacklinks",
-        "displayName": "查询块的反向链接",
-        "userDescription": "查找哪些笔记引用了指定的块 UUID",
-        "modelDescription": "查找哪些笔记引用了指定的块 UUID（反向链接）。\n\n用于回答「这个块被哪些地方引用过」「谁引用了这条内容」「这条内容还在别处出现吗」之类的问题。\n\n返回每个引用位置的：文件、行号、引用类型（行内 / 嵌入）、所在块的首行文本。同时会给出该 UUID 的定义位置；若存在重复定义或目标块已删除，会明确标注。",
+        "displayName": "%tineBlockRef_findBacklinks.displayName%",
+        "userDescription": "%tineBlockRef_findBacklinks.userDescription%",
+        "modelDescription": "%tineBlockRef_findBacklinks.modelDescription%",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "blockBacklinks",
         "icon": "$(link)",
@@ -127,11 +128,11 @@
           "properties": {
             "blockId": {
               "type": "string",
-              "description": "目标块 UUID，可带 (( )) 包裹。"
+              "description": "%tineBlockRef_findBacklinks.blockId.description%"
             },
             "limit": {
               "type": "number",
-              "description": "最多返回多少条引用，默认 50，上限 200。"
+              "description": "%tineBlockRef_findBacklinks.limit.description%"
             }
           },
           "required": [
@@ -143,48 +144,63 @@
     "commands": [
       {
         "command": "blockReferenceInterpreter.expandCurrentNote",
-        "title": "块引用：展开当前笔记为可读版"
+        "title": "%blockReferenceInterpreter.command.expandCurrentNote%"
       },
       {
         "command": "blockReferenceInterpreter.expandBlockAtCursor",
-        "title": "块引用：展开光标处的块引用"
+        "title": "%blockReferenceInterpreter.command.expandBlockAtCursor%"
       },
       {
         "command": "blockReferenceInterpreter.expandBlockById",
-        "title": "块引用：按 UUID 展开单个块"
+        "title": "%blockReferenceInterpreter.command.expandBlockById%"
       },
       {
         "command": "blockReferenceInterpreter.showBacklinksAtCursor",
-        "title": "块引用：查看光标处块引用的反向链接"
+        "title": "%blockReferenceInterpreter.command.showBacklinksAtCursor%"
       },
       {
         "command": "blockReferenceInterpreter.showBacklinks",
-        "title": "块引用：查看块的反向链接"
+        "title": "%blockReferenceInterpreter.command.showBacklinks%"
       },
       {
         "command": "blockReferenceInterpreter.showBacklinksPanel",
-        "title": "块引用：打开反链面板"
+        "title": "%blockReferenceInterpreter.command.showBacklinksPanel%"
       },
       {
         "command": "blockReferenceInterpreter.rebuildIndex",
-        "title": "块引用：重建索引"
+        "title": "%blockReferenceInterpreter.command.rebuildIndex%"
       },
       {
         "command": "blockReferenceInterpreter.selectGraphRoot",
-        "title": "块引用：选择 Tine 图谱目录"
+        "title": "%blockReferenceInterpreter.command.selectGraphRoot%"
       },
       {
         "command": "blockReferenceInterpreter.showLog",
-        "title": "块引用：显示日志"
+        "title": "%blockReferenceInterpreter.command.showLog%"
       }
     ],
     "configuration": {
-      "title": "块引用解读工具",
+      "title": "%blockReferenceInterpreter.configuration.title%",
       "properties": {
+        "tineBlockRef.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "en",
+            "zh-cn"
+          ],
+          "enumDescriptions": [
+            "%tineBlockRef.language.enum.auto%",
+            "%tineBlockRef.language.enum.en%",
+            "%tineBlockRef.language.enum.zh-cn%"
+          ],
+          "default": "auto",
+          "description": "%tineBlockRef.language%"
+        },
         "tineBlockRef.graphRoot": {
           "type": "string",
           "default": "",
-          "description": "Tine 图谱根目录。留空则自动探测（含 pages/ 与 logseq/ 的目录）。"
+          "description": "%tineBlockRef.graphRoot%"
         },
         "tineBlockRef.include": {
           "type": "array",
@@ -195,7 +211,7 @@
             "pages/**/*.md",
             "journals/**/*.md"
           ],
-          "description": "参与索引的文件范围（相对图谱根）。"
+          "description": "%tineBlockRef.include%"
         },
         "tineBlockRef.exclude": {
           "type": "array",
@@ -210,26 +226,26 @@
             "**/node_modules/**",
             "**/.git/**"
           ],
-          "description": "索引时排除的路径。默认排除 Tine/Logseq 的元数据与回收站。"
+          "description": "%tineBlockRef.exclude%"
         },
         "tineBlockRef.maxDepth": {
           "type": "number",
           "default": 3,
           "minimum": 0,
           "maximum": 10,
-          "description": "嵌套块引用（引用里再引用）的默认展开层数。0 表示不递归。"
+          "description": "%tineBlockRef.maxDepth%"
         },
         "tineBlockRef.maxOutputChars": {
           "type": "number",
           "default": 20000,
           "minimum": 1000,
-          "description": "单次工具调用的输出字符预算，超出后截断并提示。"
+          "description": "%tineBlockRef.maxOutputChars%"
         },
         "tineBlockRef.hoverPreviewLines": {
           "type": "number",
           "default": 6,
           "minimum": 1,
-          "description": "悬停预览显示的块内容行数。行数越少，整体高度越矮，底部的「展开全文/反向链接」按钮越不容易被滚动隐藏。"
+          "description": "%tineBlockRef.hoverPreviewLines%"
         },
         "tineBlockRef.hideProperties": {
           "type": "array",
@@ -240,12 +256,12 @@
             "id",
             "collapsed"
           ],
-          "description": "渲染块内容时隐藏的属性名（不含 ::）。"
+          "description": "%tineBlockRef.hideProperties%"
         },
         "tineBlockRef.inlineRender.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "在编辑器里把 ((uuid)) 直接显示成目标块的首行文本（类似 Tine/Logseq 的原生效果）。关闭后显示原始 UUID。"
+          "description": "%tineBlockRef.inlineRender.enabled%"
         },
         "tineBlockRef.inlineRender.mode": {
           "type": "string",
@@ -254,32 +270,32 @@
             "append"
           ],
           "enumDescriptions": [
-            "隐藏原文 UUID，只显示目标块标题（最接近笔记软件原生效果）",
-            "保留原文 UUID，在其后追加〔目标块标题〕（更保守，光标行为完全正常）"
+            "%tineBlockRef.inlineRender.mode.enum.replace%",
+            "%tineBlockRef.inlineRender.mode.enum.append%"
           ],
           "default": "replace",
-          "description": "行内渲染的方式。若发现 replace 模式下光标定位异常，可切换到 append。"
+          "description": "%tineBlockRef.inlineRender.mode%"
         },
         "tineBlockRef.inlineRender.maxTitleLength": {
           "type": "number",
           "default": 60,
           "minimum": 10,
-          "description": "行内渲染时目标块标题的最大长度，超出会截断并加省略号，避免把行撑爆。"
+          "description": "%tineBlockRef.inlineRender.maxTitleLength%"
         },
         "tineBlockRef.inlineRender.showMissing": {
           "type": "boolean",
           "default": true,
-          "description": "目标块不存在时，在行内显示「⚠ 块不存在」而不是原始 UUID，便于一眼发现失效引用。"
+          "description": "%tineBlockRef.inlineRender.showMissing%"
         },
         "tineBlockRef.render.stripHeadingMarks": {
           "type": "boolean",
           "default": true,
-          "description": "在行内渲染、悬停预览、展开文档中，去掉块标题的 Markdown 标记（#、## 等）。AI 工具返回的内容不受此设置影响，仍保留标题标记以便模型识别层级。"
+          "description": "%tineBlockRef.render.stripHeadingMarks%"
         },
         "tineBlockRef.showIndexNotification": {
           "type": "boolean",
           "default": true,
-          "description": "索引自动建立完成后，在右下角弹出提示。关掉后仅在索引为空（未找到任何笔记）时仍然警告。"
+          "description": "%tineBlockRef.showIndexNotification%"
         },
         "tineBlockRef.backlinks.style": {
           "type": "string",
@@ -289,12 +305,12 @@
             "off"
           ],
           "enumDescriptions": [
-            "块行尾显示「🔗 N」徽章，悬停可看到引用此块的页面列表。与 Tine 的表现一致（默认）",
-            "块上方单独一行显示「N 条链接引用」。若 VS Code 关掉了 InlayHint（editor.inlayHints.enabled）可用这个",
-            "不显示任何反链标记，仍可用命令查看"
+            "%tineBlockRef.backlinks.style.enum.inline%",
+            "%tineBlockRef.backlinks.style.enum.lens%",
+            "%tineBlockRef.backlinks.style.enum.off%"
           ],
           "default": "inline",
-          "description": "反链计数在编辑器里的呈现方式。只有真正被引用过的块才会显示，大多数笔记不会多出任何东西。"
+          "description": "%tineBlockRef.backlinks.style%"
         },
         "tineBlockRef.backlinks.panel": {
           "type": "string",
@@ -303,30 +319,30 @@
             "text"
           ],
           "enumDescriptions": [
-            "网页面板：左键单击块名即可跳转，样式接近 Tine（默认）",
-            "只读文本文档：必须 Ctrl + 单击才能跳转，但支持 Ctrl+F 查找与自由复制"
+            "%tineBlockRef.backlinks.panel.enum.html%",
+            "%tineBlockRef.backlinks.panel.enum.text%"
           ],
           "default": "html",
-          "description": "反链面板的呈现方式。文本编辑器里的链接强制要求 Ctrl + 单击（VS Code 硬规则），只有网页面板能做到左键单击跳转。"
+          "description": "%tineBlockRef.backlinks.panel%"
         },
         "tineBlockRef.backlinks.subtreeLines": {
           "type": "number",
           "default": 0,
-          "description": "反链面板里每个引用块最多展开多少行子树内容。0 表示不限制（默认）——Tine 也是完整显示。真实库里有极少数块子树超过 400 行，嫌长可设成 30 之类的值。",
+          "description": "%tineBlockRef.backlinks.subtreeLines%",
           "minimum": 0,
           "maximum": 2000
         },
         "tineBlockRef.backlinks.itemsPerPage": {
           "type": "number",
           "default": 20,
-          "description": "反链面板中每个页面最多显示多少条引用。超出部分会汇总提示，避免单页引用过多时面板过长。",
+          "description": "%tineBlockRef.backlinks.itemsPerPage%",
           "minimum": 1,
           "maximum": 500
         },
         "tineBlockRef.backlinks.pathDepth": {
           "type": "number",
           "default": 3,
-          "description": "反链面板中每个引用块显示的祖先层级数（面包屑层数）。层级太深时只保留最靠近引用的几级。",
+          "description": "%tineBlockRef.backlinks.pathDepth%",
           "minimum": 0,
           "maximum": 10
         }

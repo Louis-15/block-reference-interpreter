@@ -13,6 +13,7 @@
  */
 
 import { renderBlockTree, measureSubtree, type RenderOptions } from './render';
+import { t } from './i18n';
 import type { GraphIndex } from './graphIndex';
 import type { BlockLookupResult } from './graphIndex';
 
@@ -60,14 +61,14 @@ function shortenPath(path: string): string {
 function renderCandidate(result: BlockLookupResult, options: ResolveOptions, heading: string): string {
 	const block = result.parsed.blocks[result.blockIndex];
 	if (!block) {
-		return `${heading}\n（块数据缺失）`;
+		return `${heading}\n${t('(block data missing)')}`;
 	}
 
 	const size = measureSubtree(result.parsed, result.blockIndex);
 	const lines = [
 		heading,
-		`来源：\`${shortenPath(result.location.path)}\` 第 ${block.startLine + 1}–${block.endLine + 1} 行`,
-		`规模：${size.lines} 行 / ${size.chars} 字符`,
+		t('Source: `{0}` lines {1}–{2}', shortenPath(result.location.path), block.startLine + 1, block.endLine + 1),
+		t('Size: {0} lines / {1} characters', size.lines, size.chars),
 		'',
 		renderBlockTree(result.parsed, result.blockIndex, options),
 	];
@@ -128,7 +129,10 @@ function resolveInternal(
 	if (visited.has(normalized)) {
 		return {
 			uuid: normalized,
-			text: `### 块 \`${normalized}\`\n（循环引用：该块已在当前展开路径中，已跳过）`,
+			text: t(
+				'### Block `{0}`\n(circular reference: this block is already in the current expansion path, skipped)',
+				normalized,
+			),
 			truncated: false,
 			notFound: false,
 			duplicateCount: 0,
@@ -140,9 +144,10 @@ function resolveInternal(
 	if (candidates.length === 0) {
 		return {
 			uuid: normalized,
-			text:
-				`### 块 \`${normalized}\`\n` +
-				`⚠ 未找到该 UUID 对应的块。可能原因：块已被删除、引用来自其他图谱、或块从未保存过 ID。`,
+			text: t(
+				'### Block `{0}`\n⚠ No block found for this UUID. Possible reasons: the block was deleted, the reference comes from another graph, or the block never had a saved ID.',
+				normalized,
+			),
 			truncated: false,
 			notFound: true,
 			duplicateCount: 0,
@@ -154,9 +159,11 @@ function resolveInternal(
 
 	if (duplicateCount > 0) {
 		sections.push(
-			`### 块 \`${normalized}\`\n` +
-				`⚠ 该 UUID 在 ${duplicateCount} 处重复定义，以下是全部候选。` +
-				`这通常意味着笔记被复制粘贴过，请以内容判断哪个才是你需要的。`,
+			t(
+				'### Block `{0}`\n⚠ This UUID is defined in {1} places; all candidates are listed below. This usually means the note was copied and pasted — use the content to judge which one you need.',
+				normalized,
+				duplicateCount,
+			),
 		);
 	}
 
@@ -171,12 +178,14 @@ function resolveInternal(
 
 		const heading =
 			duplicateCount > 0
-				? `#### 候选 ${candidateIndex + 1} / ${candidates.length}`
-				: `### 块 \`${normalized}\``;
+				? t('#### Candidate {0} / {1}', candidateIndex + 1, candidates.length)
+				: t('### Block `{0}`', normalized);
 
 		const rendered = renderCandidate(candidate, options, heading);
 		if (rendered.length > budget.remaining) {
-			sections.push(rendered.slice(0, Math.max(budget.remaining, 0)) + '\n（内容过大，已截断）');
+			sections.push(
+				rendered.slice(0, Math.max(budget.remaining, 0)) + '\n' + t('(content too large, truncated)'),
+			);
 			budget.remaining = 0;
 			continue;
 		}
@@ -204,13 +213,13 @@ function resolveInternal(
 			}
 			// 用引用发生的位置做小标题，帮助 AI 对应「这句里的引用指向哪」。
 			nestedSections.push(
-				`##### ↳ 第 ${reference.line + 1} 行引用 \`${reference.uuid}\` 的展开`,
+				t('##### ↳ Expansion of the reference at line {0} `{1}`', reference.line + 1, reference.uuid),
 				child.text,
 			);
 		}
 
 		if (nestedSections.length > 0) {
-			sections.push('', '**该块子树内还引用了以下块：**', '', ...nestedSections);
+			sections.push('', t('**The following blocks are also referenced inside this block subtree:**'), '', ...nestedSections);
 		}
 	}
 
@@ -238,7 +247,7 @@ export function resolveBlocks(index: GraphIndex, uuids: readonly string[], optio
 		if (budget.remaining <= 0) {
 			results.push({
 				uuid: uuid.toLowerCase(),
-				text: '（本次调用的输出预算已用尽，未解析该 UUID）',
+				text: t('(output budget for this call is exhausted; this UUID was not resolved)'),
 				truncated: true,
 				notFound: false,
 				duplicateCount: 0,

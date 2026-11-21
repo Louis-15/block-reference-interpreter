@@ -16,6 +16,7 @@ import { GraphIndex } from '../core/graphIndex';
 import { matchSimpleGlob } from '../core/globMatch';
 import { detectGraphRoot, nodePathProbe } from '../core/graphLocator';
 import type { IndexStats } from '../core/types';
+import { t } from '../core/i18n';
 
 /**
  * 编辑器内容变化的防抖时长。
@@ -102,7 +103,7 @@ export class IndexService {
 
 		this.readyPromise = this.doInitialize().catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : String(error);
-			this.log(`[错误] 索引初始化失败：${message}`);
+			this.log(t('[Error] Failed to initialise the index: {0}', message));
 		});
 	}
 
@@ -110,15 +111,17 @@ export class IndexService {
 		const root = this.resolveGraphRoot();
 		if (!root) {
 			this.log(
-				'[提示] 未找到 Tine 图谱根目录。\n' +
-					'        打开一个包含 pages/ 与 logseq/ 的笔记库文件夹后会自动识别；\n' +
-					'        也可以用命令「块引用：选择 Tine 图谱目录」手动指定。',
+				t(
+					'[Info] No Tine graph root found.\n' +
+						'        Open a note vault folder that contains both pages/ and logseq/ and it will be detected automatically;\n' +
+						'        you can also specify it manually with the "Select Tine Graph Directory" command.',
+				),
 			);
 			return;
 		}
 
 		this.graphRoot = root;
-		this.log(`[索引] 图谱根目录：${root}`);
+		this.log(t('[Index] Graph root: {0}', root));
 		await this.rebuild();
 		this.attachWatcher();
 	}
@@ -135,8 +138,11 @@ export class IndexService {
 			// 配置了但目录不存在时明确告知，避免用户对着空索引干等。
 			if (!nodePathProbe.isDirectory(configured)) {
 				this.log(
-					`[警告] 配置的图谱目录不存在：${configured}\n` +
-						`        请执行命令「块引用：选择 Tine 图谱目录」重新指定。`,
+					t(
+						'[Warning] The configured graph directory does not exist: {0}\n' +
+							'          Run the "Select Tine Graph Directory" command to set it again.',
+						configured,
+					),
 				);
 			}
 			return configured;
@@ -262,7 +268,7 @@ export class IndexService {
 				this.changeEmitter.fire();
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				this.log(`[错误] 更新未保存文档索引失败 ${document.uri.fsPath}：${message}`);
+				this.log(t('[Error] Failed to update the index for the unsaved document {0}: {1}', document.uri.fsPath, message));
 			}
 		}, INDEX_DEBOUNCE_MS);
 
@@ -319,7 +325,7 @@ export class IndexService {
 		const configured = readConfig().graphRoot;
 		if (configured) {
 			if (configured !== this.graphRoot && nodePathProbe.isDirectory(configured)) {
-				await this.switchTo(configured, '工作区变化，改用配置的图谱目录');
+				await this.switchTo(configured, t('workspace changed, switching to the configured graph directory'));
 			}
 			return;
 		}
@@ -335,7 +341,7 @@ export class IndexService {
 			 * - 旧的图谱仍在某个工作区里（只是没被探测到） → 保留，避免误清。
 			 */
 			if (this.graphRoot && !this.isUnderAnyWorkspaceFolder(this.graphRoot)) {
-				this.log('[索引] 当前工作区不含 Tine 图谱，已清空索引。');
+				this.log(t('[Index] The current workspace has no Tine graph; the index was cleared.'));
 				this.index.clear();
 				this.graphRoot = undefined;
 				this.disposeWatcher();
@@ -349,7 +355,7 @@ export class IndexService {
 			return;
 		}
 
-		await this.switchTo(detected, '检测到新的 Tine 图谱目录');
+		await this.switchTo(detected, t('detected a new Tine graph directory'));
 	}
 
 	/** 配置变化后的处理。 */
@@ -367,7 +373,7 @@ export class IndexService {
 			const configured = readConfig().graphRoot;
 
 			if (configured && configured !== this.graphRoot) {
-				await this.switchTo(configured, '图谱目录设置已更改');
+				await this.switchTo(configured, t('graph directory setting changed'));
 				return;
 			}
 
@@ -375,11 +381,11 @@ export class IndexService {
 				// 配置被清空 → 回到自动探测。
 				const detected = this.detectFromWorkspace();
 				if (detected) {
-					await this.switchTo(detected, '已清空图谱目录配置，改为自动探测');
+					await this.switchTo(detected, t('graph directory setting cleared, falling back to auto-detection'));
 					return;
 				}
 				if (this.graphRoot) {
-					this.log('[索引] 图谱目录配置已清空且未探测到新图谱，索引保持不变。');
+					this.log(t('[Index] Graph directory setting cleared and no new graph detected; the index is unchanged.'));
 				}
 				return;
 			}
@@ -409,7 +415,7 @@ export class IndexService {
 	 * 会等到「旧索引建完」就返回，拿到的是上一个笔记库的数据。
 	 */
 	private async switchTo(root: string, reason: string): Promise<void> {
-		this.log(`[索引] ${reason}：${root}`);
+		this.log(t('[Index] {0}: {1}', reason, root));
 		this.graphRoot = root;
 		this.disposeWatcher();
 
@@ -418,7 +424,7 @@ export class IndexService {
 			this.attachWatcher();
 		})().catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : String(error);
-			this.log(`[错误] 切换图谱目录失败：${message}`);
+			this.log(t('[Error] Failed to switch the graph directory: {0}', message));
 		});
 
 		await this.readyPromise;
@@ -446,8 +452,8 @@ export class IndexService {
 			canSelectFolders: true,
 			canSelectFiles: false,
 			canSelectMany: false,
-			openLabel: '设为 Tine 图谱根目录',
-			title: '选择包含 pages/ 与 logseq/ 的 Tine 图谱文件夹',
+			openLabel: t('Set as Tine graph root'),
+			title: t('Select the Tine graph folder that contains pages/ and logseq/'),
 		});
 
 		const folder = picked?.[0];
@@ -462,7 +468,7 @@ export class IndexService {
 		 * 而那个监听器看到 `configured !== graphRoot` 会再切一次。
 		 * 先切换让两者相等，监听器就自然跳过，不会重复建索引。
 		 */
-		await this.switchTo(folder.fsPath, '手动选择图谱目录');
+		await this.switchTo(folder.fsPath, t('graph directory selected manually'));
 
 		await vscode.workspace
 			.getConfiguration('tineBlockRef')
@@ -496,15 +502,26 @@ export class IndexService {
 			// 不提示的话，用户只会看到工具报「未找到块」，完全不知道是索引没建起来。
 			if (files.length === 0) {
 				this.log(
-					`[警告] 图谱根目录下没有匹配到任何 Markdown 文件：${this.graphRoot}\n` +
-						`        请确认该目录下有 pages/ 或 journals/，或在设置中修改 tineBlockRef.graphRoot。`,
+					t(
+						'[Warning] No Markdown files matched under the graph root: {0}\n' +
+							'          Make sure that directory contains pages/ or journals/, or change tineBlockRef.graphRoot in the settings.',
+						this.graphRoot,
+					),
 				);
 			}
 
 			const stats = await this.index.rebuild(files, (filePath) => readFileText(filePath));
 			this.log(
-				`[索引] 完成：文件 ${stats.fileCount} / 块 ${stats.blockCount} / 带 ID ${stats.idBlockCount} / ` +
-					`引用 ${stats.referenceCount} / 重复 ID ${stats.duplicateIdCount} / 解析 ${stats.elapsedMs}ms / 总 ${Date.now() - startedAt}ms`,
+				t(
+					'[Index] Done: {0} files / {1} blocks / {2} with ID / {3} references / {4} duplicate IDs / parse {5}ms / total {6}ms',
+					stats.fileCount,
+					stats.blockCount,
+					stats.idBlockCount,
+					stats.referenceCount,
+					stats.duplicateIdCount,
+					stats.elapsedMs,
+					Date.now() - startedAt,
+				),
 			);
 			this.changeEmitter.fire();
 
@@ -534,15 +551,23 @@ export class IndexService {
 
 		if (fileCount === 0) {
 			void vscode.window.showWarningMessage(
-				`块引用解读工具：图谱目录里没有找到笔记（${this.graphRoot}）。请检查图谱目录设置。`,
+				t(
+					'Block Reference Interpreter: no notes found in the graph directory ({0}). Please check the graph directory setting.',
+					this.graphRoot ?? t('(not detected)'),
+				),
 			);
 			return;
 		}
 
 		const seconds = (stats.elapsedMs / 1000).toFixed(1);
 		void vscode.window.showInformationMessage(
-			`块引用索引已建立：${stats.fileCount} 个文件 / ${stats.idBlockCount} 个带 ID 块 / ` +
-				`${stats.referenceCount} 处引用（${seconds}s）`,
+			t(
+				'Block reference index built: {0} files / {1} blocks with ID / {2} references ({3}s)',
+				stats.fileCount,
+				stats.idBlockCount,
+				stats.referenceCount,
+				seconds,
+			),
 		);
 	}
 
@@ -595,7 +620,7 @@ export class IndexService {
 				this.changeEmitter.fire();
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				this.log(`[错误] 增量更新失败 ${uri.fsPath}：${message}`);
+				this.log(t('[Error] Incremental update failed for {0}: {1}', uri.fsPath, message));
 			}
 		};
 

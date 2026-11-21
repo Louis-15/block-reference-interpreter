@@ -7,6 +7,7 @@
 
 import type { BacklinkReport } from './backlinkReport';
 import { toPageName } from './backlinkReport';
+import { t } from './i18n';
 
 /** 悬停列表里的一条引用。 */
 export interface BacklinkTooltipItem {
@@ -127,23 +128,23 @@ export function buildAnchorFromReport(
  * 行尾徽章（InlayHint）走 `vscode/backlinkTooltip.ts` 的富文本版本。
  */
 export function formatTooltipText(data: BacklinkTooltipData): string {
-	const lines = [`${data.itemCount} 个引用块提到了这个块`];
+	const lines = [t('{0} referencing blocks mention this block', data.itemCount)];
 
 	if (data.hitCount > data.itemCount) {
-		lines.push(`同一块内重复引用，共出现 ${data.hitCount} 次`);
+		lines.push(t('Repeated references inside the same block, {0} occurrences in total', data.hitCount));
 	}
 	if (data.duplicate) {
-		lines.push('⚠ 该 UUID 在多个位置重复定义');
+		lines.push(t('⚠ This UUID is defined in multiple places'));
 	}
 
 	for (const item of data.items) {
-		const context = item.blockPath.length > 0 ? item.blockPath : `第 ${item.line + 1} 行`;
+		const context = item.blockPath.length > 0 ? item.blockPath : t('line {0}', item.line + 1);
 		lines.push(`· ${item.pageName} — ${context}`);
 	}
 	if (data.remaining > 0) {
-		lines.push(`· 还有 ${data.remaining} 个页面未列出`);
+		lines.push(t('· {0} more pages not listed', data.remaining));
 	}
 
-	lines.push('点击查看完整反链面板');
+	lines.push(t('Click to open the full backlinks panel'));
 	return lines.join('\n');
 }

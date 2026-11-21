@@ -24,6 +24,7 @@ import { openReadOnlyContent } from '../readOnlyContent';
 import { showBacklinkPanelView } from '../backlinkPanelView';import { OPEN_BACKLINK_AT_COMMAND } from '../backlinkCommands';
 import { openBacklinkAt } from './backlinkJump';
 import type { CommandDeps } from './expandCommands';
+import { t } from '../../core/i18n';
 
 /**
  * 打开指定块的反链面板。
@@ -36,8 +37,8 @@ export async function showBacklinksPanel(deps: CommandDeps, uuid?: string): Prom
 	if (!normalized) {
 		// 从徽章/命令两种入口进来；徽章一定有 uuid，手动执行时走这条路。
 		const raw = await vscode.window.showInputBox({
-			title: '查看块的反向链接',
-			prompt: '输入块 UUID（可带 (( )) 包裹）',
+			title: t('Show backlinks for a block'),
+			prompt: t('Enter a block UUID (a (( )) wrapper is accepted)'),
 			placeHolder: '66c73a56-ddda-44d2-80dd-009e44406fd4',
 			ignoreFocusOut: true,
 		});
@@ -62,7 +63,7 @@ export async function showBacklinksPanel(deps: CommandDeps, uuid?: string): Prom
 		maxSubtreeLines: config.backlinkSubtreeLines,
 	});
 	const graphRoot = deps.getGraphRoot();
-	const title = `反链 ${normalized.slice(0, 8)}`;
+	const title = t('Backlinks {0}', normalized.slice(0, 8));
 
 	if (config.backlinkPanelStyle === 'text') {
 		await showAsTextPanel(deps, report, title, graphRoot, config.backlinkItemsPerPage);
@@ -73,7 +74,7 @@ export async function showBacklinksPanel(deps: CommandDeps, uuid?: string): Prom
 	}
 
 	if (report.definitions.length === 0) {
-		void vscode.window.showWarningMessage(`块 ${normalized} 不存在（可能已被删除）。`);
+		void vscode.window.showWarningMessage(t('Block {0} does not exist (it may have been deleted).', normalized));
 	}
 }
 

@@ -19,6 +19,7 @@
 import * as vscode from 'vscode';
 
 import { splitLines } from '../core/blockParser';
+import { t } from '../core/i18n';
 import type { GraphIndex } from '../core/graphIndex';
 import { detectGraphRoot, isGraphContentFile, nodePathProbe } from '../core/graphLocator';
 import { scanReferences } from '../core/refScanner';
@@ -167,7 +168,7 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 			// 渲染失败不应该打断编辑：记日志后放弃这一轮，
 			// 下一次文本/编辑器事件会自然重试。
 			const message = error instanceof Error ? error.message : String(error);
-			this.log(`[错误] 行内渲染失败 ${editor.document.uri.fsPath}：${message}`);
+			this.log(t('[Error] Inline rendering failed for {0}: {1}', editor.document.uri.fsPath, message));
 		}
 	}
 
@@ -336,5 +337,5 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 
 /** 供日志使用：让调用方知道渲染器已启用。 */
 export function describeInlineRenderer(): string {
-	return `行内渲染已启用（防抖 ${DEBOUNCE_MS}ms）`;
+	return t('Inline rendering enabled (debounce {0}ms)', DEBOUNCE_MS);
 }

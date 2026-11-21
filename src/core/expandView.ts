@@ -16,6 +16,7 @@
 import type { BlockLookupResult, GraphIndex } from './graphIndex';
 import { getBlockTitle, measureSubtree, renderBlockTree, stripHeadingMarks } from './render';
 import type { RenderOptions } from './render';
+import { t } from './i18n';
 
 /** 一个可跳转的位置。 */
 export interface ExpandLocation {
@@ -205,9 +206,9 @@ function collectBlocks(
 	if (visited.has(normalized)) {
 		out.push({
 			uuid: normalized,
-			title: '（循环引用，已跳过）',
+			title: t('(circular reference, skipped)'),
 			lines: [],
-			warnings: ['该块已在当前展开路径中'],
+			warnings: [t('This block is already in the current expansion path')],
 			depth,
 		});
 		return;
@@ -218,9 +219,11 @@ function collectBlocks(
 	if (candidates.length === 0) {
 		out.push({
 			uuid: normalized,
-			title: '未找到该块',
+			title: t('Block not found'),
 			lines: [],
-			warnings: ['块可能已被删除、引用来自其他图谱，或块从未保存过 ID'],
+			warnings: [
+				t('The block may have been deleted, the reference may come from another graph, or the block never had a saved ID'),
+			],
 			depth,
 		});
 		return;
@@ -241,13 +244,17 @@ function collectBlocks(
 
 		const size = measureSubtree(candidate.parsed, candidate.blockIndex);
 		const lineRange = blockNode
-			? `第 ${blockNode.startLine + 1}–${blockNode.endLine + 1} 行`
+			? t('lines {0}–{1}', blockNode.startLine + 1, blockNode.endLine + 1)
 			: undefined;
 
 		const warnings: string[] = [];
 		if (candidates.length > 1) {
 			warnings.push(
-				`该 UUID 在 ${candidates.length} 处重复定义，这是第 ${candidateIndex + 1} 处候选`,
+				t(
+					'This UUID is defined in {0} places; this is candidate {1}',
+					candidates.length,
+					candidateIndex + 1,
+				),
 			);
 		}
 
@@ -265,19 +272,19 @@ function collectBlocks(
 		if (options.maxLines !== undefined && options.maxLines > 0 && finalLines.length > options.maxLines) {
 			const omitted = finalLines.length - options.maxLines;
 			finalLines = finalLines.slice(0, options.maxLines);
-			warnings.push(`内容过长，已省略 ${omitted} 行`);
+			warnings.push(t('Content too long; {0} lines omitted', omitted));
 		}
 
 		out.push({
 			uuid: normalized,
-			title: title.length > 0 ? title : '（空块）',
+			title: title.length > 0 ? title : t('(empty block)'),
 			source: {
 				path: candidate.location.path,
 				line: blockNode?.startLine ?? 0,
 				displayPath: toDisplayPath(candidate.location.path, options.graphRoot),
 			},
 			lineRange,
-			size: `${size.lines} 行 / ${size.chars} 字符`,
+			size: t('{0} lines / {1} characters', size.lines, size.chars),
 			lines: finalLines,
 			warnings,
 			depth,
@@ -315,7 +322,7 @@ export function buildBlockExpandView(
 		: undefined;
 
 	return {
-		title: `块 ${uuid.toLowerCase()}`,
+		title: t('Block {0}', uuid.toLowerCase()),
 		subtitle,
 		summary: first?.size,
 		flow,
@@ -371,9 +378,9 @@ export function buildNoteExpandView(
 	}
 
 	return {
-		title: '笔记展开',
+		title: t('Note expansion'),
 		subtitle: toDisplayPath(input.path, options.graphRoot),
-		summary: `共 ${input.references.length} 处块引用`,
+		summary: t('{0} block references in total', input.references.length),
 		flow,
 	};
 }

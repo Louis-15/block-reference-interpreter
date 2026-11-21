@@ -10,6 +10,7 @@
 import * as vscode from 'vscode';
 
 import { formatTooltipText } from '../core/backlinkBadge';
+import { t } from '../core/i18n';
 import { BacklinkAnchorCache, shouldShowBacklinks, type AnchorDeps } from './backlinkAnchors';
 import { SHOW_BACKLINKS_PANEL_COMMAND } from './backlinkCommands';
 
@@ -55,12 +56,12 @@ export class BacklinkLensProvider implements vscode.CodeLensProvider, vscode.Dis
 			// CodeLens 占用**块首行上方**的独立一行，因此 range 用该行的起点。
 			const range = new vscode.Range(anchor.line, 0, anchor.line, 0);
 
-			const parts = [`$(references) ${anchor.count} 条链接引用`];
+			const parts = [t('$(references) {0} link references', anchor.count)];
 			if (anchor.hitCount > anchor.count) {
-				parts.push(`（共 ${anchor.hitCount} 次）`);
+				parts.push(t(' ({0} in total)', anchor.hitCount));
 			}
 			if (anchor.duplicate) {
-				parts.push('· ⚠ 该 ID 重复');
+				parts.push(t('· ⚠ This ID is duplicated'));
 			}
 
 			lenses.push(

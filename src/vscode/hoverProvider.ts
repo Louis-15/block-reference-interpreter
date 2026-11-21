@@ -26,6 +26,7 @@ import { locateAllReferences } from '../core/refLocator';
 import type { ReferenceHit } from '../core/types';
 import { readConfig } from './indexService';
 import { buildBlockHover, getInlineTitle } from './hoverContent';
+import { t } from '../core/i18n';
 
 /** 单个文档的扫描缓存。 */
 interface DocumentCache {
@@ -59,7 +60,7 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 			return await this.doProvideHover(document, position, token);
 		} catch (error) {
 			const message = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
-			this.log?.(`[错误] 悬停处理异常：${message}`);
+			this.log?.(t('[Error] Hover handling failed: {0}', message));
 			return undefined;
 		}
 	}
@@ -77,11 +78,17 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 		const detectedRoot = detectGraphRoot(document.uri.fsPath, nodePathProbe) ?? undefined;
 		const graphRoot = this.getGraphRoot() ?? detectedRoot;
 		if (!graphRoot) {
-			this.log?.(`[悬停跳过] 未找到图谱根目录：${document.uri.fsPath}`);
+			this.log?.(t('[Hover skipped] No graph root found: {0}', document.uri.fsPath));
 			return undefined;
 		}
 		if (!isGraphContentFile(document.uri.fsPath, graphRoot)) {
-			this.log?.(`[悬停跳过] 文件不在 pages/ 或 journals/ 下：${document.uri.fsPath}（图谱根 ${graphRoot}）`);
+			this.log?.(
+				t(
+					'[Hover skipped] File is not under pages/ or journals/: {0} (graph root {1})',
+					document.uri.fsPath,
+					graphRoot,
+				),
+			);
 			return undefined;
 		}
 
@@ -101,7 +108,7 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 		// 视觉范围判定需要索引里的标题长度，所以先确保索引就绪。
 		await this.ensureReady();
 		if (token.isCancellationRequested) {
-			this.log?.('[悬停跳过] 等待索引期间被取消');
+			this.log?.(t('[Hover skipped] Cancelled while waiting for the index'));
 			return undefined;
 		}
 
@@ -119,8 +126,12 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 					// 这是最容易出问题的一步：两套正则（refScanner / refLocator）
 					// 只要有一处不一致，这里就会静默全部失配。
 					this.log?.(
-						`[悬停失配] 行 ${position.line + 1} 列 ${reference.start} uuid=${reference.uuid}：` +
-							`refLocator 定位到了引用，但 refScanner 的整篇结果里没有对应条目`,
+						t(
+							'[Hover mismatch] line {0} column {1} uuid={2}: refLocator found the reference but refScanner has no matching entry in its whole-document result',
+							position.line + 1,
+							reference.start,
+							reference.uuid,
+						),
 					);
 					return undefined;
 				}
@@ -128,7 +139,7 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 				// 悬空引用：行内是否显示「⚠ 块不存在」取决于配置，
 				// 但**无论显示与否，hover 都要能响应**——否则用户永远发现不了失效引用。
 				if (index.lookupBlocks(reference.uuid).length === 0) {
-					return config.inlineRenderShowMissing ? '⚠ 块不存在' : '';
+					return config.inlineRenderShowMissing ? t('⚠ Block not found') : '';
 				}
 
 				const title = getInlineTitle(
@@ -139,7 +150,7 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 					config.renderStripHeadingMarks,
 				);
 				if (title === undefined) {
-					this.log?.(`[悬停跳过] 无法取得标题：uuid=${reference.uuid}`);
+					this.log?.(t('[Hover skipped] Cannot get the title: uuid={0}', reference.uuid));
 				}
 				return title;
 			},

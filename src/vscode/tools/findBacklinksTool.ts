@@ -11,6 +11,7 @@ import { buildBacklinkReport, renderBacklinkReport } from '../../core/backlinkRe
 import type { GraphIndex } from '../../core/graphIndex';
 import { readConfig } from '../indexService';
 import { normalizeUuid, textResult } from './common';
+import { t } from '../../core/i18n';
 
 export interface FindBacklinksInput {
 	/** 目标块的 UUID。 */
@@ -32,12 +33,14 @@ export class FindBacklinksTool implements vscode.LanguageModelTool<FindBacklinks
 	): Promise<vscode.LanguageModelToolResult> {
 		await this.ensureReady();
 		if (token.isCancellationRequested) {
-			return textResult('（调用已取消）');
+			return textResult(t('(call cancelled)'));
 		}
 
 		const uuid = normalizeUuid(options.input.blockId ?? '');
 		if (!uuid) {
-			return textResult('缺少 blockId 参数。请传入块的 UUID，例如 `66c73a56-ddda-44d2-80dd-009e44406fd4`。');
+			return textResult(
+				t('The blockId parameter is missing. Pass the block UUID, for example `66c73a56-ddda-44d2-80dd-009e44406fd4`.'),
+			);
 		}
 
 		const index = this.getIndex();
@@ -60,6 +63,6 @@ export class FindBacklinksTool implements vscode.LanguageModelTool<FindBacklinks
 	}
 
 	async prepareInvocation(): Promise<vscode.PreparedToolInvocation> {
-		return { invocationMessage: '正在查询块的反向链接' };
+		return { invocationMessage: t('Looking up backlinks for the block') };
 	}
 }

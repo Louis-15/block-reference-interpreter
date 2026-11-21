@@ -15,6 +15,7 @@ import * as vscode from 'vscode';
 
 import type { BacklinkTooltipData } from '../core/backlinkBadge';
 import { OPEN_BACKLINK_AT_COMMAND, SHOW_BACKLINKS_PANEL_COMMAND } from './backlinkCommands';
+import { t } from '../core/i18n';
 
 /**
  * 转义 Markdown 特殊字符。
@@ -62,14 +63,16 @@ export function buildAnchorTooltip(anchor: {
 	md.isTrusted = { enabledCommands: [OPEN_BACKLINK_AT_COMMAND, SHOW_BACKLINKS_PANEL_COMMAND] };
 	md.supportHtml = false;
 
-	const summary = [`${data.itemCount} 个引用块`];
+	const summary = [t('{0} referencing blocks', data.itemCount)];
 	if (data.hitCount > data.itemCount) {
-		summary.push(`同块内重复共 ${data.hitCount} 次`);
+		summary.push(t('{0} repeated occurrences inside the same block', data.hitCount));
 	}
-	md.appendMarkdown(`**引用此块的页面**（${summary.join('，')}）\n\n`);
+	md.appendMarkdown(`${t('**Pages referencing this block** ({0})', summary.join(', '))}\n\n`);
 
 	if (data.duplicate) {
-		md.appendMarkdown('⚠ 该 UUID 在多个位置重复定义，引用可能指向其中任意一个\n\n');
+		md.appendMarkdown(
+			`${t('⚠ This UUID is defined in multiple places; a reference may point to any of them')}\n\n`,
+		);
 	}
 
 	for (const item of data.items) {
@@ -79,17 +82,17 @@ export function buildAnchorTooltip(anchor: {
 		const context =
 			item.blockPath.length > 0
 				? ` · ${escapeMarkdown(item.blockPath)}`
-				: ` · 第 ${item.line + 1} 行`;
-		const extra = item.groupCount > 1 ? `（本页 ${item.groupCount} 处）` : '';
+				: t(' · line {0}', item.line + 1);
+		const extra = item.groupCount > 1 ? t(' ({0} on this page)', item.groupCount) : '';
 		md.appendMarkdown(`- ${link}${context}${extra}\n`);
 	}
 
 	if (data.remaining > 0) {
-		md.appendMarkdown(`- 还有 ${data.remaining} 个页面未列出\n`);
+		md.appendMarkdown(`${t('- {0} more pages not listed', data.remaining)}\n`);
 	}
 
 	md.appendMarkdown(
-		`\n[查看完整反链面板](command:${SHOW_BACKLINKS_PANEL_COMMAND}?${encodeArgs([anchor.uuid])})`,
+		`\n[${t('Open the full backlinks panel')}](command:${SHOW_BACKLINKS_PANEL_COMMAND}?${encodeArgs([anchor.uuid])})`,
 	);
 
 	return md;

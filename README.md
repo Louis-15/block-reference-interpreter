@@ -1,4 +1,236 @@
-# 块引用解读工具
+# Block Reference Interpreter（块引用解读工具）
+
+Parses Tine / Logseq `((uuid))` block references inside VS Code, so both the editor and your AI assistant can read the real content behind them.
+
+<a id="en"></a>
+
+**English** ｜ [简体中文](#zh)
+
+| Item | Detail |
+|---|---|
+| Extension ID | `louis-15.block-reference-interpreter` |
+| Works with | Tine, Logseq, and other notes apps using the same block-reference syntax |
+| Platforms | Windows / macOS / Linux |
+| Data safety | Read-only. Never modifies, reformats or rewrites your notes |
+| License | MIT |
+
+## Part 1 · What it does
+
+### 1.1 The problem
+
+Tine and Logseq render `((uuid))` as the referenced block's content, so reading is effortless inside those apps. The `.md` source, however, only keeps the UUID:
+
+```markdown
+- See ((3f7a1c2e-5b9d-4a11-8c3e-1d2f4b6a8c01)) for the implementation
+```
+
+Opening that file in VS Code leaves both you and the AI staring at a meaningless ID. Two things break:
+
+- **Reading**: you have to jump back to the notes app to see what the reference points at.
+- **AI analysis**: the model misses the referenced context and draws one-sided conclusions.
+
+This extension indexes the whole graph locally, mapping every UUID to its block and all child blocks, and exposes that to the editor UI and to AI tools.
+
+### 1.2 Backlinks
+
+VS Code also lacks **backlinks** — where a block is referenced from. Tine and Logseq both ship a backlinks panel; this extension reproduces it, including the reference count badge, hover list, a full panel with restored indentation and expanded subtrees, collapsible branches, and click-to-jump. See [4.5 Backlinks](#45-backlinks).
+
+### 1.3 Supported reference forms
+
+| Form | Example | Notes |
+|---|---|---|
+| Inline | `((3f7a1c2e-5b9d-4a11-8c3e-1d2f4b6a8c01))` | The common case |
+| Embed | `{{embed ((3f7a1c2e-5b9d-4a11-8c3e-1d2f4b6a8c01))}}` | Tine / Logseq embed syntax |
+| Full-width brackets | `（（3f7a1c2e-...））` | Produced by Chinese IMEs |
+| Spaced variant | `{{ embed (( 3f7a1c2e-... )) }}` | Tolerated; standard form unaffected |
+
+All four behave identically in inline rendering, hover preview, AI tools and expanded views. Inline rendering replaces the **entire expression**, including the `{{embed ...}}` wrapper, so no `{{embed Title}}` residue is left behind.
+
+### 1.4 Feature overview
+
+| Feature | Description |
+|---|---|
+| Index | Background scan of `pages/` and `journals/`, building UUID → block and UUID → reference maps in memory. Built and maintained automatically as soon as a vault is opened |
+| AI tools (3) | Let Copilot Chat read block content on demand. Nothing is written to disk |
+| Inline rendering | Shows `((uuid))` as the target block's title, close to the native note-app experience |
+| Hover preview | Shows the target block and all of its children |
+| Expanded view | Whole note, block at cursor, or block by UUID — rendered in a webview panel where every block is labelled with its source and clickable back to the original |
+| Backlinks | Reference count at the end of the block line, hover list of referencing pages, and a full grouped panel with restored indentation, expanded subtrees, folding and click-to-jump. Also available to AI via `#blockBacklinks` |
+
+## Part 2 · Installation
+
+Two steps, **both required**:
+
+1. Install the VS Code extension — teaches the editor to resolve block references.
+2. Add an instructions file to your vault — tells the AI the tools exist.
+
+Step 2 is easy to skip, and skipping it is the single most common reason the extension appears to "do nothing".
+
+### 2.1 Step 1: install the extension
+
+**From the Marketplace (recommended)** — search for "Block Reference Interpreter" in the Extensions view, or:
+
+```bash
+code --install-extension louis-15.block-reference-interpreter
+```
+
+Extension page: <https://marketplace.visualstudio.com/items?itemName=louis-15.block-reference-interpreter>
+
+**From a VSIX** — download the `.vsix` from [Releases](https://github.com/Louis-15/block-reference-interpreter/releases), then `Ctrl+Shift+P` → **Extensions: Install from VSIX...**, and reload the window.
+
+**From source**:
+
+```bash
+npm install
+npm run build
+npx vsce package --allow-missing-repository
+code --install-extension block-reference-interpreter-*.vsix
+```
+
+> **Extension ID change**: versions up to 0.3.4 used the ID `local.block-reference-interpreter`. If you installed one of those, uninstall it first — otherwise two extensions activate at once and you get duplicate badges and panels.
+
+### 2.2 Step 2: add the vault instructions
+
+**Required.** Without it, the AI has no reason to call the tools.
+
+VS Code extensions **cannot intercept** Copilot's built-in file reading. A plain read of a `.md` file shows the raw `((uuid))`, and the model will not guess that a resolver exists. It has to be told.
+
+Download `notebook-instructions.zip` from the Release page and extract it into **your vault root**, or copy the file manually from `templates/github/instructions/` to:
+
+```
+<vault root>/.github/instructions/block-reference.instructions.md
+```
+
+Three things must be right:
+
+| Item | Requirement | Common mistake |
+|---|---|---|
+| Directory | `.github/instructions/` | Putting it in `.github/` — silently ignored |
+| Filename | must end with `.instructions.md` | Using `copilot-instructions.md` — not in the recognised list |
+| Front matter | must contain `applyTo` | Omitting it — the file is never auto-loaded |
+
+The instructions impose five rules: always call `#blockRef` on a block reference; prefer `#blockNote` over plain file reads; use `#blockBacklinks` for reverse lookups; use `mode: "list"` first when a note has many references; and never invent content when a tool reports "not found".
+
+## Part 3 · Verifying the installation
+
+Work through these six checks in order.
+
+**3.1 Extension installed** — `Ctrl+Shift+P` → **Extensions: Show Installed Extensions** → search "Block Reference". Or `code --list-extensions --show-versions | Select-String block-reference`.
+
+**3.2 Index built** — open your vault folder. You should see a notification such as `Block reference index built: 842 files / 917 blocks with ID / 1036 references (0.3s)`. If not, open the output channel and look for `[Index] Graph root:` — no such line means the vault was not detected (open the **folder**, not a single file, and make sure it contains both `pages/` and `logseq/`).
+
+**3.3 Instructions loaded** — `Ctrl+Shift+P` → **Chat: Open Customizations** → **Instructions** → **Workspace** should list one entry.
+
+**3.4 Inline rendering** — open a note with a `((uuid))`. It should display the target block's title instead of the raw ID.
+
+**3.5 AI calls the tools** — ask "what does the block reference on line 33 point to?". A tool-call card should appear. If the model answers directly, see 5.1.
+
+**3.6 Backlinks** — find a block with `id::` that is referenced elsewhere. A `🔗 N` badge appears at the end of its line; hovering lists the referencing pages; clicking "Open the full backlinks panel" shows the grouped panel.
+
+## Part 4 · Usage
+
+### 4.1 AI tools
+
+| `#` name | Purpose |
+|---|---|
+| `#blockRef` | Read a block and all its children by UUID |
+| `#blockNote` | Read a whole note with every block reference expanded |
+| `#blockBacklinks` | Find where a block is referenced |
+
+`#blockNote` has three modes: `list` (just the reference list — several KB, prefer it when there are many references), `expand` (default, full expansion), and `both`. Beyond eight references `expand` attaches the list automatically and reports any lines that exceeded the output budget.
+
+### 4.2 Inline rendering
+
+`((uuid))` is replaced by the target block's first line. Child blocks are not shown inline — hover for those. Missing targets render as `⚠ Block not found`; duplicate UUIDs render as `Title (N duplicates)`.
+
+Two modes: `replace` (default, hides the original UUID — closest to the notes app) and `append` (keeps the UUID and appends `〔Title〕`, so cursor behaviour is completely normal). In `replace` mode the original UUID is compressed to zero width, so the cursor is invisible while passing over it; copy-paste still yields the raw text. Switch to `append` if you edit references often.
+
+### 4.3 Hover preview
+
+Hovering a reference shows the source file and line, subtree size, the block title and its first six lines, plus an **Expand full text** link. The line count is deliberately short (`hoverPreviewLines`, default 6): VS Code's hover box has limited height and a long preview pushes the bottom buttons out of view.
+
+### 4.4 Expanded view
+
+"Expand full text" opens a **webview panel**, not a read-only text document, so every block's source is clickable. Clicking the source path opens that note and selects the block's first line — selecting the whole line rather than placing a bare cursor, because a thin caret is invisible against a wall of text.
+
+Content uses small grey bullets rather than Markdown dashes, matching Tine / Logseq, with indentation restored level by level.
+
+Why a webview: **links inside a text editor always require Ctrl+Click** (clicking means "place the cursor" in an editor). Webview links respond to a plain left click, which is what makes the panel feel like Tine. Set `tineBlockRef.backlinks.panel` to `text` if you would rather have Ctrl+F and free copying.
+
+### 4.5 Backlinks
+
+| Capability | Tine | This extension |
+|---|---|---|
+| Reference count near the block | Floating number, top-right | `🔗 N` badge at end of line |
+| Hover to see referencing pages | Yes | Yes, each with a breadcrumb |
+| Group all references by page | Yes | Yes, sorted by reference count |
+| Show the section the reference lives in | `3 Performance › 3.2 Indexing` | Same breadcrumb path |
+| Show the referencing block with its children | Yes | Full subtree, indentation restored |
+| Fold / unfold children | Small triangle | `▾` / `▸` plus a collapse-all button |
+| Click a title to jump | Yes | Plain left click, no Ctrl |
+| Remember fold state | Yes | Survives switching tabs |
+| **AI can query backlinks** | No | `#blockBacklinks` |
+
+Two differences are unavoidable: the count sits at the end of the line rather than floating at the block's top-right, and the panel opens as a tab beside the editor rather than in a right-hand dock. Both are consequences of the VS Code extension model.
+
+### 4.6 Language
+
+`tineBlockRef.language` controls the language of messages, hovers, panels and tool results: `auto` (follow VS Code), `en`, or `zh-cn`. **Command titles and setting names follow the VS Code display language and cannot be overridden** — those strings are read by the editor itself when rendering the command palette and settings page.
+
+### 4.7 Commands
+
+All nine commands live under "Block Reference:" in the command palette: expand current note, expand reference at cursor, expand block by UUID, show backlinks for reference at cursor, show backlinks for block, open backlinks panel, rebuild index, select Tine graph directory, show log.
+
+"Rebuild index" and "Select Tine graph directory" are fallbacks, not daily steps.
+
+### 4.8 Graph detection and index maintenance
+
+Opening a folder that contains both `pages/` and `logseq/` triggers automatic detection — no configuration. Detection also accepts `logseq/config.edn` or `.tine-trash/`, and searches up to ten levels, so opening a subfolder works too.
+
+The index updates automatically on: vault open, edits in Tine, saves in VS Code, **unsaved edits** (250 ms after you stop typing), file creation/deletion, external changes such as a git checkout, and setting changes.
+
+## Part 5 · Notes
+
+### 5.1 The AI does not call the tools
+
+Check in order: the instructions file is loaded (3.3); you are in a new chat (instructions load per conversation); name the tool explicitly ("use #blockNote to read this note"); the tools are enabled in the chat tool picker; or the output was truncated (switch to `mode: "list"`).
+
+### 5.2 Backlinks do not appear
+
+If the badge is missing: `editor.inlayHints.enabled` may be off (badges vanish silently — set `backlinks.style` to `lens` to bypass); the block genuinely is not referenced; `backlinks.style` is `off`; or the index is still building. If the badge exists but the hover list is empty, the index is stale — rebuild it.
+
+### 5.3 The index is empty
+
+Check the `[Index] Graph root:` line in the output channel. The path must actually contain `pages/` with `.md` files. "Rebuild index" will not fix a detection failure — it only rescans the directory it already has.
+
+### 5.4 Data safety
+
+The extension is **read-only**. All output goes to webview panels, read-only virtual documents, the output channel, or tool return values. No file is created in your vault.
+
+### 5.5 Known limitations
+
+Only `pages/` and `journals/` are indexed. Backlink badge position and panel placement differ from Tine for the reasons above. Badges depend on `editor.inlayHints.enabled`. The expanded view has no Ctrl+F (use the webview's own find). With several vaults open only one is indexed. Dangling references and duplicate IDs are reported explicitly rather than silently.
+
+### 5.6 Settings
+
+See the settings page (search `tineBlockRef`). Every setting is documented inline.
+
+## Appendix · Development
+
+```bash
+npm install
+npm run build      # bundle to dist/
+npm test           # unit tests + real-vault smoke tests
+npm run typecheck
+```
+
+Parsing logic lives in `src/core/` and deliberately does not import `vscode`, so all 320 tests run in plain Node. See [AGENTS.md](https://github.com/Louis-15/block-reference-interpreter/blob/main/AGENTS.md) for architecture notes, publishing flow and platform pitfalls.
+
+---
+
+<a id="zh"></a>
+
+**[English](#en)** ｜ 简体中文
 
 在 VS Code 中解析 Tine / Logseq 笔记的 `((uuid))` 块引用，使编辑器与 AI 均能读取被引用块的完整内容。
 
@@ -566,7 +798,17 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 
 这两个入口使用 QuickPick 列表，与面板的分工为：**QuickPick 用于跳转到某一处，面板用于通读全部**。
 
-## 4.6 命令一览
+## 4.6 界面语言
+
+`tineBlockRef.language` 控制本扩展的运行时文案，取值 `auto`（跟随 VS Code 界面语言，默认）、`en`、`zh-cn`。切换后建议重载窗口，让已经渲染出来的内容一并更新。
+
+**适用范围**：提示消息、悬停预览、反链面板、展开网页、AI 工具的返回内容。
+
+**命令标题与设置项名称不在其列**——它们由 VS Code 在渲染命令面板与设置页时读取 `package.nls`，扩展没有运行时改写它们的接口。需要整界面统一时，请切换 VS Code 自身的显示语言。
+
+另注：AI 工具的**描述**（`modelDescription` 与参数说明）固定为英文，因为模型对英文工具描述的理解更稳定；工具**返回内容**则跟随上述设置。
+
+## 4.7 命令一览
 
 | 命令 | 使用场景 |
 |---|---|
@@ -582,7 +824,7 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 
 > **「重建索引」与「选择 Tine 图谱目录」均为兜底手段**，不属于日常步骤。正常情况下安装完成并打开笔记库后，无需再操作这两项。
 
-## 4.7 图谱目录识别
+## 4.8 图谱目录识别
 
 打开同时包含 `pages/` 与 `logseq/` 的文件夹，插件会自动识别并建立索引，**无需任何配置**。
 
@@ -609,7 +851,7 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 
 仅索引**一个**：优先当前打开文件所属的图谱，其次为第一个工作区文件夹。需要更换时使用手动指定命令。
 
-## 4.8 索引更新时机
+## 4.9 索引更新时机
 
 全自动维护，无需记住任何操作：
 
@@ -693,6 +935,7 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 
 | 配置 | 默认值 | 说明 |
 |---|---|---|
+| `tineBlockRef.language` | `auto` | 运行时文案语言：`auto` 跟随 VS Code / `en` 英文 / `zh-cn` 简体中文。命令标题与设置项名称始终跟随 VS Code 界面语言 |
 | `tineBlockRef.graphRoot` | 自动探测 | 图谱根目录 |
 | `tineBlockRef.include` | `pages/**/*.md`, `journals/**/*.md` | 参与索引的文件 |
 | `tineBlockRef.exclude` | `logseq/**`, `.tine-trash/**` 等 | 排除的路径 |
@@ -724,6 +967,9 @@ npm run typecheck  # 类型检查
 ```
 
 核心解析逻辑位于 `src/core/`，刻意不依赖 `vscode` 模块，可在普通 Node 环境中直接测试。
+
+架构约定、发布流程与平台限制的细节见仓库根目录的
+[AGENTS.md](https://github.com/Louis-15/block-reference-interpreter/blob/main/AGENTS.md)。
 
 ## 目录结构
 
@@ -780,7 +1026,7 @@ $stream.Dispose(); $zip.Dispose()
 
 1. 修改 `package.json` 的 `version`，并在 `CHANGELOG.md` 补充对应条目
 2. 提交并推送到 `main`
-3. 创建并推送标签：`git tag -a v0.3.6 -m "v0.3.6"; git push origin refs/tags/v0.3.6`
+3. 创建并推送标签：`git tag -a v0.4.0 -m "v0.4.0"; git push origin refs/tags/v0.4.0`
 
 标签推送后，工作流会依次执行：校验标签与版本一致 → 类型检查 → 单元测试 →
 构建 → 打包 → 发布扩展市场 → 创建 GitHub Release 并上传两个附件。

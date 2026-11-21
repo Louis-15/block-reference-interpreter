@@ -17,6 +17,7 @@ import { buildBlockPath } from './blockPath';
 import type { BacklinkEntry, GraphIndex } from './graphIndex';
 import { cleanReferenceLine } from './refText';
 import { getBlockTitle, renderBlockTree, stripHeadingMarks } from './render';
+import { t } from './i18n';
 
 /**
  * 引用所在块的子树中的一行。
@@ -358,38 +359,55 @@ export function renderBacklinkReport(
 	const lines: string[] = [];
 
 	if (options.includeHeader !== false) {
-		lines.push(`# 块 \`${report.uuid}\` 的反向链接`, '');
+		lines.push(t('# Backlinks for block `{0}`', report.uuid), '');
 
 		if (report.definitions.length === 0) {
-			lines.push('> ⚠ 该 UUID 对应的块不存在（可能已被删除）。以下引用均为**悬空引用**。');
+			lines.push(
+				t('> ⚠ The block for this UUID does not exist (it may have been deleted). All references below are **dangling**.'),
+			);
 		} else if (report.definitions.length > 1) {
-			lines.push(`> ⚠ 该 UUID 在 ${report.definitions.length} 处重复定义，引用可能指向其中任意一个。`);
+			lines.push(
+				t(
+					'> ⚠ This UUID is defined in {0} places; a reference may point to any of them.',
+					report.definitions.length,
+				),
+			);
 		}
 
 		if (report.definitions.length > 0) {
 			const first = report.definitions[0];
 			if (first) {
 				lines.push(
-					`**定义位置**：\`${toDisplayPath(first.path, options.graphRoot)}\` 第 ${first.line + 1} 行`,
-					`**块内容**：${first.title}`,
+					t(
+						'**Defined at**: `{0}` line {1}',
+						toDisplayPath(first.path, options.graphRoot),
+						first.line + 1,
+					),
+					t('**Block content**: {0}', first.title),
 				);
 			}
 		}
 
 		if (report.itemCount > 0) {
-			const hitNote = report.hitCount > report.itemCount
-				? `（同一块内重复出现共 ${report.hitCount} 次）`
-				: '';
+			const hitNote =
+				report.hitCount > report.itemCount
+					? t(' ({0} repeated occurrences inside the same block)', report.hitCount)
+					: '';
 			lines.push(
 				'',
-				`**引用统计**：${report.fileCount} 个页面 / ${report.itemCount} 个引用块${hitNote}`,
+				t(
+					'**Reference count**: {0} pages / {1} referencing blocks{2}',
+					report.fileCount,
+					report.itemCount,
+					hitNote,
+				),
 			);
 		}
 		lines.push('');
 	}
 
 	if (report.itemCount === 0) {
-		lines.push('没有任何笔记引用这个块。');
+		lines.push(t('No note references this block.'));
 		return lines.join('\n');
 	}
 
@@ -405,7 +423,12 @@ export function renderBacklinkReport(
 
 		const relative = toDisplayPath(group.path, options.graphRoot);
 		const pageName = toPageName(group.path);
-		lines.push(`## ${pageName}`, '', `\`${relative}\` · ${group.count} 处引用`, '');
+		lines.push(
+			t('## {0}', pageName),
+			'',
+			t('`{0}` · {1} references', relative, group.count),
+			'',
+		);
 
 		const shown = maxItems === undefined ? group.items : group.items.slice(0, maxItems);
 		for (const item of shown) {
@@ -416,10 +439,12 @@ export function renderBacklinkReport(
 			}
 
 			const kindText = item.kinds.includes('embed')
-				? (item.kinds.includes('inline') ? '行内引用 + 嵌入引用' : '嵌入引用')
-				: '行内引用';
-			const countText = item.count > 1 ? `，本块内 ${item.count} 次` : '';
-			const positionText = `第 ${item.line + 1} 行 · ${kindText}${countText}`;
+				? item.kinds.includes('inline')
+					? t('inline + embedded reference')
+					: t('embedded reference')
+				: t('inline reference');
+			const countText = item.count > 1 ? t(', {0} times inside this block', item.count) : '';
+			const positionText = t('line {0} · {1}{2}', item.line + 1, kindText, countText);
 
 			if (item.blockPath.length > 0) {
 				// 有祖先路径时：第一行给位置（面包屑），第二行给行号与类型。
@@ -429,13 +454,13 @@ export function renderBacklinkReport(
 			} else {
 				// 顶层块没有面包屑，用引用行清洗后的文字兜底。
 				const cleaned = cleanReferenceLine(item.lineText);
-				lines.push(`- ${cleaned || item.blockTitle || '（顶层块）'}`, `  - ${positionText}`);
+				lines.push(`- ${cleaned || item.blockTitle || t('(top-level block)')}`, `  - ${positionText}`);
 			}
 			emitted++;
 		}
 
 		if (!truncatedByTotal && maxItems !== undefined && group.items.length > maxItems) {
-			lines.push(`- （本页还有 ${group.items.length - maxItems} 处未显示）`);
+			lines.push(t('- ({0} more references on this page not shown)', group.items.length - maxItems));
 		}
 
 		lines.push('');
@@ -443,7 +468,11 @@ export function renderBacklinkReport(
 
 	if (truncatedByTotal && maxTotal !== undefined) {
 		lines.push(
-			`- （已达显示上限 ${maxTotal} 条，共 ${report.itemCount} 条。扩大 limit 参数可看到更多，上限 200。）`,
+			t(
+				'- (display limit of {0} reached; {1} in total. Increase the limit parameter to see more, up to 200.)',
+				maxTotal,
+				report.itemCount,
+			),
 			'',
 		);
 	}
@@ -451,7 +480,9 @@ export function renderBacklinkReport(
 	if (purpose === 'tool') {
 		lines.push(
 			'---',
-			'提示：路径中的 `›` 表示块在笔记里的层级位置，便于判断这条引用出现在什么上下文中。',
+			t(
+				'Note: the `›` in a path separates the block hierarchy levels inside the note, which helps judge the context this reference appears in.',
+			),
 		);
 	}
 
@@ -510,34 +541,44 @@ export function renderBacklinkPanel(
 	};
 
 	if (options.includeHeader !== false) {
-		push(`# 块 \`${report.uuid}\` 的反向链接`);
+		push(t('# Backlinks for block `{0}`', report.uuid));
 		push('');
 
 		if (report.definitions.length === 0) {
-			push('> ⚠ 该 UUID 对应的块不存在（可能已被删除）。以下引用均为**悬空引用**。');
+			push(
+				t('> ⚠ The block for this UUID does not exist (it may have been deleted). All references below are **dangling**.'),
+			);
 		} else if (report.definitions.length > 1) {
-			push(`> ⚠ 该 UUID 在 ${report.definitions.length} 处重复定义，引用可能指向其中任意一个。`);
+			push(
+				t('> ⚠ This UUID is defined in {0} places; a reference may point to any of them.', report.definitions.length),
+			);
 		}
 
 		const first = report.definitions[0];
 		if (first) {
-			push(`**定义位置**：\`${toDisplayPath(first.path, options.graphRoot)}\` 第 ${first.line + 1} 行`);
-			push(`**块内容**：${first.title}`);
+			push(
+				t('**Defined at**: `{0}` line {1}', toDisplayPath(first.path, options.graphRoot), first.line + 1),
+			);
+			push(t('**Block content**: {0}', first.title));
 		}
 
 		if (report.itemCount > 0) {
 			const hitNote =
-				report.hitCount > report.itemCount ? `（同一块内重复出现共 ${report.hitCount} 次）` : '';
+				report.hitCount > report.itemCount
+					? t(' ({0} repeated occurrences inside the same block)', report.hitCount)
+					: '';
 			push('');
-			push(`**引用统计**：${report.fileCount} 个页面 / ${report.itemCount} 个引用块${hitNote}`);
+			push(
+				t('**Reference count**: {0} pages / {1} referencing blocks{2}', report.fileCount, report.itemCount, hitNote),
+			);
 			push('');
-			push('点击下面的块名可直接跳到引用位置。');
+			push(t('Click a block title below to jump to the reference.'));
 		}
 		push('');
 	}
 
 	if (report.itemCount === 0) {
-		push('没有任何笔记引用这个块。');
+		push(t('No note references this block.'));
 		return { text: lines.join('\n'), links };
 	}
 
@@ -557,7 +598,7 @@ export function renderBacklinkPanel(
 		const relative = toDisplayPath(group.path, options.graphRoot);
 		push(`## ${toPageName(group.path)}`);
 		push('');
-		push(`\`${relative}\` · ${group.count} 处引用`);
+		push(t('`{0}` · {1} references', relative, group.count));
 		push('');
 
 		const shown = maxItems === undefined ? group.items : group.items.slice(0, maxItems);
@@ -574,14 +615,14 @@ export function renderBacklinkPanel(
 
 			// 引用块标题缩进一级，体现它是面包屑最后那一级的子块。
 			const prefix = hasPath ? '    ' : '  ';
-			const linkText = targetTitle.length > 0 ? targetTitle : `第 ${item.line + 1} 行`;
+			const linkText = targetTitle.length > 0 ? targetTitle : t('line {0}', item.line + 1);
 
 			const kindText = item.kinds.includes('embed')
 				? item.kinds.includes('inline')
-					? '行内引用 + 嵌入引用'
-					: '嵌入引用'
-				: '行内引用';
-			const countText = item.count > 1 ? `，本块内 ${item.count} 次` : '';
+					? t('inline + embedded reference')
+					: t('embedded reference')
+				: t('inline reference');
+			const countText = item.count > 1 ? t(', {0} times inside this block', item.count) : '';
 
 			links.push({
 				line: lines.length,
@@ -589,7 +630,7 @@ export function renderBacklinkPanel(
 				endColumn: prefix.length + linkText.length,
 				path: item.path,
 				targetLine: item.line,
-				tooltip: `${relative} 第 ${item.line + 1} 行 · ${kindText}${countText}`,
+				tooltip: t('{0} line {1} · {2}{3}', relative, item.line + 1, kindText, countText),
 			});
 
 			push(prefix + linkText);
@@ -601,21 +642,21 @@ export function renderBacklinkPanel(
 				push(`${indent}${sub.isListItem ? '- ' : ''}${sub.text}`);
 			}
 			if (item.subtreeOmitted > 0) {
-				push(`${baseIndent}  … 还有 ${item.subtreeOmitted} 行未展开`);
+				push(`${baseIndent}  ${t('… {0} more lines not expanded', item.subtreeOmitted)}`);
 			}
 
 			emitted++;
 		}
 
 		if (!truncatedByTotal && maxItems !== undefined && group.items.length > maxItems) {
-			push(`- （本页还有 ${group.items.length - maxItems} 处未显示）`);
+			push(t('- ({0} more references on this page not shown)', group.items.length - maxItems));
 		}
 
 		push('');
 	}
 
 	if (truncatedByTotal && maxTotal !== undefined) {
-		push(`- （已达显示上限 ${maxTotal} 条，共 ${report.itemCount} 条。）`);
+		push(t('- (display limit of {0} reached; {1} in total.)', maxTotal, report.itemCount));
 		push('');
 	}
 

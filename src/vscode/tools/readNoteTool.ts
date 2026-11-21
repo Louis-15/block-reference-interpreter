@@ -17,6 +17,7 @@ import { resolveBlock } from '../../core/resolve';
 import { readFileText, readConfig } from '../indexService';
 import { getBlockTitle } from '../../core/render';
 import { normalizeFilePath, textResult, toDisplayPath, truncate } from './common';
+import { t } from '../../core/i18n';
 
 export interface ReadNoteInput {
 	/** 笔记文件路径；相对路径按图谱根解析。 */
@@ -47,15 +48,15 @@ const tailReserveMargin = 600;
 function describeReference(index: GraphIndex, uuid: string): string {
 	const candidates = index.lookupBlocks(uuid);
 	if (candidates.length === 0) {
-		return `⚠ 目标块不存在（可能已删除）`;
+		return t('⚠ The target block does not exist (it may have been deleted)');
 	}
 	const first = candidates[0];
 	if (!first) {
-		return `（块数据缺失）`;
+		return t('(block data missing)');
 	}
 	const block = first.parsed.blocks[first.blockIndex];
 	const title = block ? getBlockTitle(block.ownLines[0] ?? '') : '';
-	const suffix = candidates.length > 1 ? `（另有 ${candidates.length - 1} 处重复定义）` : '';
+	const suffix = candidates.length > 1 ? t(' ({0} more duplicate definitions)', candidates.length - 1) : '';
 	return `→ ${title}${suffix}`;
 }
 
@@ -72,12 +73,14 @@ export class ReadNoteTool implements vscode.LanguageModelTool<ReadNoteInput> {
 	): Promise<vscode.LanguageModelToolResult> {
 		await this.ensureReady();
 		if (token.isCancellationRequested) {
-			return textResult('（调用已取消）');
+			return textResult(t('(call cancelled)'));
 		}
 
 		const input = options.input;
 		if (!input.filePath || input.filePath.trim().length === 0) {
-			return textResult('缺少 filePath 参数。请传入笔记的绝对路径或相对图谱根的路径，例如 `pages/某个笔记.md`。');
+			return textResult(
+				t('The filePath parameter is missing. Pass the absolute path of the note, or a path relative to the graph root, for example `pages/some-note.md`.'),
+			);
 		}
 
 		const graphRoot = this.getGraphRoot();
@@ -91,8 +94,8 @@ export class ReadNoteTool implements vscode.LanguageModelTool<ReadNoteInput> {
 		const content = await this.readContent(absolutePath);
 		if (content === undefined) {
 			return textResult(
-				`无法读取文件：${absolutePath}\n` +
-					`请确认路径是否正确。图谱根目录是：${graphRoot ?? '（未识别）'}`,
+				t('Cannot read file: {0}\n', absolutePath) +
+					t('Check that the path is correct. The graph root is: {0}', graphRoot ?? t('(not detected)')),
 			);
 		}
 
@@ -112,18 +115,18 @@ export class ReadNoteTool implements vscode.LanguageModelTool<ReadNoteInput> {
 			mode === 'list' || mode === 'both' || (mode === 'expand' && referenceCount > autoListThreshold);
 
 		const parts: string[] = [
-			`# 笔记：${displayPath}`,
-			`原文 ${parsed.lines.length} 行，共 ${referenceCount} 处块引用。`,
+			t('# Note: {0}', displayPath),
+			t('{0} source lines, {1} block references in total.', parsed.lines.length, referenceCount),
 		];
 
 		if (shouldList) {
 			const listLines = parsed.references.map(
-				(hit) => `- 第 ${hit.line + 1} 行 \`${hit.uuid}\` ${describeReference(index, hit.uuid)}`,
+				(hit) => t('- line {0} `{1}` {2}', hit.line + 1, hit.uuid, describeReference(index, hit.uuid)),
 			);
 			parts.push(
 				listLines.length > 0
-					? `## 块引用清单\n\n${listLines.join('\n')}`
-					: '## 块引用清单\n\n（本文件没有块引用）',
+					? t('## Block reference list\n\n{0}', listLines.join('\n'))
+					: t('## Block reference list\n\n(this file has no block references)'),
 			);
 		}
 
@@ -156,14 +159,14 @@ export class ReadNoteTool implements vscode.LanguageModelTool<ReadNoteInput> {
 				},
 			);
 
-			parts.push(`## 展开内容\n\n${result.text}`);
+			parts.push(t('## Expanded content\n\n{0}', result.text));
 
 			if (result.skipped.length > 0) {
 				expandedInfo =
-					`本次展开 ${result.expandedCount} 处，另有 ${result.skipped.length} 处因输出预算未展开。` +
-					`完整清单见上方「块引用清单」，需要时用 blockRef 按 UUID 单独读取。`;
+					t('Expanded {0} references; {1} more were not expanded because of the output budget. ', result.expandedCount, result.skipped.length) +
+					t('The full list is in the block reference list above; read them by UUID with blockRef when needed.');
 			} else {
-				expandedInfo = `本次已展开全部 ${result.expandedCount} 处引用。`;
+				expandedInfo = t('All {0} references were expanded.', result.expandedCount);
 			}
 		}
 
@@ -194,7 +197,7 @@ export class ReadNoteTool implements vscode.LanguageModelTool<ReadNoteInput> {
 		options: vscode.LanguageModelToolInvocationPrepareOptions<ReadNoteInput>,
 	): Promise<vscode.PreparedToolInvocation> {
 		return {
-			invocationMessage: `正在读取笔记并展开块引用：${options.input.filePath}`,
+			invocationMessage: t('Reading the note and expanding block references: {0}', options.input.filePath),
 		};
 	}
 }

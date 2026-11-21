@@ -11,6 +11,7 @@ import type { GraphIndex } from '../../core/graphIndex';
 import { resolveBlocks } from '../../core/resolve';
 import { readConfig } from '../indexService';
 import { normalizeUuid, textResult } from './common';
+import { t } from '../../core/i18n';
 
 export interface ReadBlockInput {
 	/** 要读取的块 UUID，可一次传多个。 */
@@ -35,7 +36,7 @@ export class ReadBlockTool implements vscode.LanguageModelTool<ReadBlockInput> {
 	): Promise<vscode.LanguageModelToolResult> {
 		await this.ensureReady();
 		if (token.isCancellationRequested) {
-			return textResult('（调用已取消）');
+			return textResult(t('(call cancelled)'));
 		}
 
 		const input = options.input;
@@ -43,10 +44,14 @@ export class ReadBlockTool implements vscode.LanguageModelTool<ReadBlockInput> {
 		const uuids = [...new Set(rawIds.map(normalizeUuid).filter((id) => id.length > 0))];
 
 		if (uuids.length === 0) {
-			return textResult('未收到有效的块 UUID。请传入形如 `66c73a56-ddda-44d2-80dd-009e44406fd4` 的 ID。');
+			return textResult(
+				t('No valid block UUID received. Pass an ID such as `66c73a56-ddda-44d2-80dd-009e44406fd4`.'),
+			);
 		}
 		if (uuids.length > 20) {
-			return textResult(`一次最多查询 20 个 UUID，本次收到 ${uuids.length} 个。请分成多次调用。`);
+			return textResult(
+				t('At most 20 UUIDs per call; received {0}. Please split into several calls.', uuids.length),
+			);
 		}
 
 		const config = readConfig();
@@ -64,15 +69,25 @@ export class ReadBlockTool implements vscode.LanguageModelTool<ReadBlockInput> {
 		const missing = results.filter((result) => result.notFound).map((result) => result.uuid);
 		const ambiguous = results.filter((result) => result.duplicateCount > 0).map((result) => result.uuid);
 
-		const summary: string[] = [`本次读取 ${uuids.length} 个块。`];
+		const summary: string[] = [t('Read {0} blocks.', uuids.length)];
 		if (missing.length > 0) {
-			summary.push(`其中 ${missing.length} 个未找到：${missing.join('、')}。这些引用可能已失效。`);
+			summary.push(
+				t('{0} of them were not found: {1}. These references may be stale.', missing.length, missing.join(', ')),
+			);
 		}
 		if (ambiguous.length > 0) {
-			summary.push(`其中 ${ambiguous.length} 个存在重复定义：${ambiguous.join('、')}。已列出全部候选。`);
+			summary.push(
+				t(
+					'{0} of them have duplicate definitions: {1}. All candidates are listed.',
+					ambiguous.length,
+					ambiguous.join(', '),
+				),
+			);
 		}
 		if (results.some((result) => result.truncated)) {
-			summary.push('部分输出因超出字符预算被截断，如需完整内容请用更小的 batch 或 compact 模式。');
+			summary.push(
+				t('Part of the output was truncated to fit the character budget. For the full content, use a smaller batch or compact mode.'),
+			);
 		}
 
 		return textResult([...summary, '', ...sections].join('\n\n'));
@@ -83,7 +98,7 @@ export class ReadBlockTool implements vscode.LanguageModelTool<ReadBlockInput> {
 	): Promise<vscode.PreparedToolInvocation> {
 		const count = Array.isArray(options.input.blockIds) ? options.input.blockIds.length : 0;
 		return {
-			invocationMessage: `正在读取 ${count} 个块引用的内容`,
+			invocationMessage: t('Reading {0} block references', count),
 		};
 	}
 }

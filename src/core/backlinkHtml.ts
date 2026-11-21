@@ -13,6 +13,7 @@
 import { escapeHtml, safeJson, stripEmphasis } from './htmlText';
 import type { BacklinkReport } from './backlinkReport';
 import { toPageName } from './backlinkReport';
+import { locale, t } from './i18n';
 
 /** 渲染选项。 */
 export interface BacklinkHtmlOptions {
@@ -164,8 +165,15 @@ a.ref:hover { text-decoration: underline; color: var(--vscode-textLink-activeFor
 .more { font-size: .85em; color: var(--vscode-descriptionForeground); padding-left: 8px; }
 `;
 
-/** 前端脚本：把点击转成 postMessage，交给扩展执行真正的跳转。 */
-const SCRIPT = `
+/**
+ * 前端脚本：把点击转成 postMessage，交给扩展执行真正的跳转。
+ *
+ * 做成函数而不是常量：折叠按钮的文案要跟随界面语言，而常量在模块加载时
+ * 就求值了，那时翻译器还没安装。标签用 JSON.stringify 嵌入，译文里的引号
+ * 或反斜杠不会破坏 JS 字符串。
+ */
+function buildScript(labels: { collapseAll: string; expandAll: string }): string {
+	return `
 (function () {
 	var api = acquireVsCodeApi();
 	var targets = JSON.parse(document.getElementById('targets').textContent);
@@ -210,7 +218,7 @@ const SCRIPT = `
 		for (var k = 0; k < items.length; k++) {
 			if (items[k].getAttribute('aria-expanded') === 'true') { anyExpanded = true; break; }
 		}
-		toggleAllButton.textContent = anyExpanded ? '全部折叠' : '全部展开';
+		toggleAllButton.textContent = anyExpanded ? ${JSON.stringify(labels.collapseAll)} : ${JSON.stringify(labels.expandAll)};
 		toggleAllButton.disabled = items.length === 0;
 	}
 
@@ -253,6 +261,7 @@ const SCRIPT = `
 	syncAll();
 })();
 `;
+}
 
 /**
  * 渲染反链面板 HTML。
@@ -273,34 +282,46 @@ export function renderBacklinkHtml(
 	// ---- 头部 ----
 	bodyParts.push('<header class="head">');
 	bodyParts.push(
-		`<h1>块 <span class="uuid">${escapeHtml(report.uuid)}</span> 的反向链接</h1>`,
+		`<h1>${escapeHtml(t('Backlinks for block'))} <span class="uuid">${escapeHtml(report.uuid)}</span></h1>`,
 	);
 
 	if (report.definitions.length === 0) {
-		bodyParts.push('<div class="warn">⚠ 该 UUID 对应的块不存在（可能已被删除）。以下引用均为<strong>悬空引用</strong>。</div>');
+		bodyParts.push(
+			`<div class="warn">${escapeHtml(
+				t('⚠ The block for this UUID does not exist (it may have been deleted). All references below are'),
+			)}<strong>${escapeHtml(t('dangling'))}</strong>${escapeHtml(t('.'))}</div>`,
+		);
 	} else if (report.definitions.length > 1) {
 		bodyParts.push(
-			`<div class="warn">⚠ 该 UUID 在 ${report.definitions.length} 处重复定义，引用可能指向其中任意一个。</div>`,
+			`<div class="warn">${escapeHtml(
+				t('⚠ This UUID is defined in {0} places; a reference may point to any of them.', report.definitions.length),
+			)}</div>`,
 		);
 	}
 
 	const first = report.definitions[0];
 	if (first) {
 		bodyParts.push(
-			`<div class="row"><span class="label">定义位置：</span>${escapeHtml(toDisplayPath(first.path, options.graphRoot))} 第 ${first.line + 1} 行</div>`,
-			`<div class="row"><span class="label">块内容：</span><span class="block-content">${escapeHtml(first.title)}</span></div>`,
+			`<div class="row"><span class="label">${escapeHtml(t('Defined at:'))}</span>${escapeHtml(
+				toDisplayPath(first.path, options.graphRoot),
+			)} ${escapeHtml(t('line {0}', first.line + 1))}</div>`,
+			`<div class="row"><span class="label">${escapeHtml(t('Block content:'))}</span><span class="block-content">${escapeHtml(first.title)}</span></div>`,
 		);
 	}
 
 	if (report.itemCount > 0) {
 		const hitNote =
 			report.hitCount > report.itemCount
-				? `（同一块内重复出现共 ${report.hitCount} 次）`
+				? t('({0} repeated occurrences inside the same block)', report.hitCount)
 				: '';
 		bodyParts.push(
-			`<div class="row"><span class="label">引用统计：</span>${report.fileCount} 个页面 / ${report.itemCount} 个引用块${escapeHtml(hitNote)}</div>`,
-			'<div class="hint">单击蓝色文字跳到引用位置；点左侧小三角可折叠或展开子块。</div>',
-			'<div class="toolbar"><button id="toggle-all" type="button">全部折叠</button></div>',
+			`<div class="row"><span class="label">${escapeHtml(t('Reference count:'))}</span>${escapeHtml(
+				t('{0} pages / {1} referencing blocks', report.fileCount, report.itemCount),
+			)}${escapeHtml(hitNote)}</div>`,
+			`<div class="hint">${escapeHtml(
+				t('Click the blue text to jump to the reference; click the triangle on the left to collapse or expand child blocks.'),
+			)}</div>`,
+			`<div class="toolbar"><button id="toggle-all" type="button">${escapeHtml(t('Collapse all'))}</button></div>`,
 		);
 	}
 
@@ -308,7 +329,7 @@ export function renderBacklinkHtml(
 
 	// ---- 空状态 ----
 	if (report.itemCount === 0) {
-		bodyParts.push('<p class="empty">没有任何笔记引用这个块。</p>');
+		bodyParts.push(`<p class="empty">${escapeHtml(t('No note references this block.'))}</p>`);
 		return {
 			html: wrapDocument(bodyParts.join('\n'), targets, options.nonce),
 			targets,
@@ -323,7 +344,7 @@ export function renderBacklinkHtml(
 		bodyParts.push('<section class="page">');
 		bodyParts.push(`<h2>${escapeHtml(toPageName(group.path))}</h2>`);
 		bodyParts.push(
-			`<div class="meta"><code>${escapeHtml(displayPath)}</code> · ${group.count} 处引用</div>`,
+			`<div class="meta"><code>${escapeHtml(displayPath)}</code> · ${escapeHtml(t('{0} references', group.count))}</div>`,
 		);
 		bodyParts.push('<ul class="refs">');
 
@@ -332,17 +353,17 @@ export function renderBacklinkHtml(
 		for (const item of shown) {
 			const kindText = item.kinds.includes('embed')
 				? item.kinds.includes('inline')
-					? '行内引用 + 嵌入引用'
-					: '嵌入引用'
-				: '行内引用';
-			const countText = item.count > 1 ? `，本块内 ${item.count} 次` : '';
-			const tooltip = `${displayPath} 第 ${item.line + 1} 行 · ${kindText}${countText}`;
+					? t('inline + embedded reference')
+					: t('embedded reference')
+				: t('inline reference');
+			const countText = item.count > 1 ? t(', {0} times inside this block', item.count) : '';
+			const tooltip = t('{0} line {1} · {2}{3}', displayPath, item.line + 1, kindText, countText);
 
 			const index = targets.length;
 			targets.push({ path: item.path, line: item.line, displayPath });
 
 			// 块不存在时没有文字可用，退回行号，保证仍然可点击。
-			const text = linkText.length > 0 ? linkText : `第 ${item.line + 1} 行`;
+			const text = linkText.length > 0 ? linkText : t('line {0}', item.line + 1);
 
 			// 折叠状态的键：报告 UUID + 序号。
 			// 不用文件路径——路径是绝对值，会把这个机器上的目录结构写进 DOM；
@@ -362,7 +383,7 @@ export function renderBacklinkHtml(
 			bodyParts.push('<div class="title-line">');
 			if (hasSubtree) {
 				bodyParts.push(
-					`<button class="toggle" type="button" aria-expanded="true" title="折叠 / 展开子块">▾</button>`,
+					`<button class="toggle" type="button" aria-expanded="true" title="${escapeHtml(t('Collapse / expand child blocks'))}">▾</button>`,
 				);
 			} else {
 				bodyParts.push('<span class="toggle-placeholder"></span>');
@@ -383,7 +404,9 @@ export function renderBacklinkHtml(
 					);
 				}
 				if (item.subtreeOmitted > 0) {
-					bodyParts.push(`<div class="sub-more">… 还有 ${item.subtreeOmitted} 行未展开</div>`);
+					bodyParts.push(
+						`<div class="sub-more">${escapeHtml(t('… {0} more lines not expanded', item.subtreeOmitted))}</div>`,
+					);
 				}
 				bodyParts.push('</div>');
 			}
@@ -392,7 +415,9 @@ export function renderBacklinkHtml(
 		}
 
 		if (maxItems !== undefined && group.items.length > maxItems) {
-			bodyParts.push(`<li class="more">本页还有 ${group.items.length - maxItems} 处未显示</li>`);
+			bodyParts.push(
+				`<li class="more">${escapeHtml(t('{0} more references on this page not shown', group.items.length - maxItems))}</li>`,
+			);
 		}
 
 		bodyParts.push('</ul>', '</section>');
@@ -407,18 +432,21 @@ export function renderBacklinkHtml(
 /** 包成完整 HTML 文档。 */
 function wrapDocument(bodyHtml: string, targets: unknown[], nonce: string): string {
 	return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${escapeHtml(locale())}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>反向链接</title>
+<title>${escapeHtml(t('Backlinks'))}</title>
 <style nonce="${nonce}">${STYLES}</style>
 </head>
 <body>
 ${bodyHtml}
 <script type="application/json" id="targets">${safeJson(targets)}</script>
-<script nonce="${nonce}">${SCRIPT}</script>
+<script nonce="${nonce}">${buildScript({
+		collapseAll: t('Collapse all'),
+		expandAll: t('Expand all'),
+	})}</script>
 </body>
 </html>`;
 }

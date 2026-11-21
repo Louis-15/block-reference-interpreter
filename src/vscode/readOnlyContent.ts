@@ -16,6 +16,8 @@
 
 import * as vscode from 'vscode';
 
+import { t } from '../core/i18n';
+
 /** 自定义 scheme。加前缀是为了避免与其他扩展的 scheme 冲突。 */
 export const VIRTUAL_SCHEME = 'tine-blockref';
 
@@ -92,20 +94,28 @@ export class ReadOnlyContentProvider implements vscode.FileSystemProvider, vscod
 	}
 
 	createDirectory(): void {
-		throw vscode.FileSystemError.NoPermissions('块引用解读工具的虚拟文档系统不支持创建目录');
+		throw vscode.FileSystemError.NoPermissions(
+			t('The Block Reference Interpreter virtual document system does not support creating directories'),
+		);
 	}
 
 	writeFile(): void {
 		// 只读：抛 NoPermissions 而不是静默忽略，这样若真有写入尝试能立刻暴露。
-		throw vscode.FileSystemError.NoPermissions('块引用解读工具的虚拟文档是只读的');
+		throw vscode.FileSystemError.NoPermissions(
+			t('Block Reference Interpreter virtual documents are read-only'),
+		);
 	}
 
 	delete(): void {
-		throw vscode.FileSystemError.NoPermissions('块引用解读工具的虚拟文档不支持删除');
+		throw vscode.FileSystemError.NoPermissions(
+			t('Block Reference Interpreter virtual documents cannot be deleted'),
+		);
 	}
 
 	rename(): void {
-		throw vscode.FileSystemError.NoPermissions('块引用解读工具的虚拟文档不支持重命名');
+		throw vscode.FileSystemError.NoPermissions(
+			t('Block Reference Interpreter virtual documents cannot be renamed'),
+		);
 	}
 
 	/**

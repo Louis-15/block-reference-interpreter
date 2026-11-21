@@ -10,6 +10,8 @@
 
 import * as vscode from 'vscode';
 
+import { t } from '../../core/i18n';
+
 /**
  * 打开某文件的指定行，并选中该行。
  *
@@ -28,7 +30,9 @@ export async function openBacklinkAt(targetPath: string, line: number): Promise<
 		document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
 	} catch {
 		// 文件可能刚被删掉，或路径来自旧索引。
-		void vscode.window.showWarningMessage(`无法打开文件：${targetPath}（可能已被移动或删除）`);
+		void vscode.window.showWarningMessage(
+			t('Cannot open file: {0} (it may have been moved or deleted)', targetPath),
+		);
 		return;
 	}
 

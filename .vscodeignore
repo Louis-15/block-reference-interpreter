@@ -5,6 +5,7 @@ docs/**
 **/*.map
 tsconfig.json
 vitest.config.ts
+vitest.setup.ts
 esbuild.mjs
 **/*.test.ts
 **/fixtures/**

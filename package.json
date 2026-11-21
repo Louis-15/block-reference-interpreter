@@ -1,8 +1,8 @@
 {
   "name": "block-reference-interpreter",
-  "displayName": "块引用解释器",
+  "displayName": "块引用解读工具",
   "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "publisher": "louis-15",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -179,7 +179,7 @@
       }
     ],
     "configuration": {
-      "title": "块引用解释器",
+      "title": "块引用解读工具",
       "properties": {
         "tineBlockRef.graphRoot": {
           "type": "string",

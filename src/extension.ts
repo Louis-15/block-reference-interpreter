@@ -30,7 +30,7 @@ import { ReadBlockTool } from './vscode/tools/readBlockTool';
 import { ReadNoteTool } from './vscode/tools/readNoteTool';
 
 /** 输出通道名，便于用户在输出面板里筛。 */
-const OUTPUT_CHANNEL_NAME = '块引用解释器';
+const OUTPUT_CHANNEL_NAME = '块引用解读工具';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const output = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
@@ -127,7 +127,7 @@ function registerCommands(
 	register('blockReferenceInterpreter.rebuildIndex', async () => {
 		// 完成提示统一由 indexService 的右下角通知负责，这里只显示进度，避免弹两次。
 		await vscode.window.withProgress(
-			{ location: vscode.ProgressLocation.Window, title: '块引用解释器：重建索引' },
+			{ location: vscode.ProgressLocation.Window, title: '块引用解读工具：重建索引' },
 			() => indexService.rebuild({ notify: true }),
 		);
 	});

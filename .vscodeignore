@@ -15,3 +15,5 @@ package-lock.json
 notebook-instructions.zip
 # 工作区配置只对本地开发有意义，不该进扩展包
 *.code-workspace
+# CI 配置与发布流程，不属于扩展运行时内容
+.github/**

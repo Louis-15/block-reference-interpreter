@@ -92,20 +92,20 @@ export class ReadOnlyContentProvider implements vscode.FileSystemProvider, vscod
 	}
 
 	createDirectory(): void {
-		throw vscode.FileSystemError.NoPermissions('块引用解释器的虚拟文档系统不支持创建目录');
+		throw vscode.FileSystemError.NoPermissions('块引用解读工具的虚拟文档系统不支持创建目录');
 	}
 
 	writeFile(): void {
 		// 只读：抛 NoPermissions 而不是静默忽略，这样若真有写入尝试能立刻暴露。
-		throw vscode.FileSystemError.NoPermissions('块引用解释器的虚拟文档是只读的');
+		throw vscode.FileSystemError.NoPermissions('块引用解读工具的虚拟文档是只读的');
 	}
 
 	delete(): void {
-		throw vscode.FileSystemError.NoPermissions('块引用解释器的虚拟文档不支持删除');
+		throw vscode.FileSystemError.NoPermissions('块引用解读工具的虚拟文档不支持删除');
 	}
 
 	rename(): void {
-		throw vscode.FileSystemError.NoPermissions('块引用解释器的虚拟文档不支持重命名');
+		throw vscode.FileSystemError.NoPermissions('块引用解读工具的虚拟文档不支持重命名');
 	}
 
 	/**

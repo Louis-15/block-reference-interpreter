@@ -534,7 +534,7 @@ export class IndexService {
 
 		if (fileCount === 0) {
 			void vscode.window.showWarningMessage(
-				`块引用解释器：图谱目录里没有找到笔记（${this.graphRoot}）。请检查图谱目录设置。`,
+				`块引用解读工具：图谱目录里没有找到笔记（${this.graphRoot}）。请检查图谱目录设置。`,
 			);
 			return;
 		}

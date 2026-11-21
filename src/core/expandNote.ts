@@ -103,7 +103,7 @@ export function buildExpandedNoteWithBudget(
 		const name = options.fileName ?? '当前笔记';
 		// 刻意不用 `>` 引用块：AI 会把引用块当成「被引用的他人内容」，
 		// 而这里是本文档自身的说明，用普通段落语义更准。
-		push(`<!-- 本文件由「块引用解释器」生成：${name} 的 AI 可读版 -->`);
+		push(`<!-- 本文件由「块引用解读工具」生成：${name} 的 AI 可读版 -->`);
 		push('');
 		push(
 			`**说明**：原文中的 \`((uuid))\` 块引用已在下方就地展开，原文行保持不变。全文共 ${input.references.length} 处块引用。`,

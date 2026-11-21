@@ -49,7 +49,7 @@ describe('buildExpandedNoteWithBudget 基础', () => {
 			includeHeader: true,
 			fileName: 'test.md',
 		});
-		expect(result.text).toContain('块引用解释器');
+		expect(result.text).toContain('块引用解读工具');
 		expect(result.text).toContain('test.md');
 		expect(result.text).toContain('全文共 2 处块引用');
 	});

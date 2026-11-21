@@ -135,7 +135,7 @@ describe.skipIf(!graphExists)('真实笔记库冒烟测试', () => {
 		);
 
 		// 头部说明
-		expect(expanded).toContain('块引用解释器');
+		expect(expanded).toContain('块引用解读工具');
 		// 展开标记必须成对出现
 		expect(expanded).toContain('块引用 ((');
 		expect(expanded).toContain('展开结束');

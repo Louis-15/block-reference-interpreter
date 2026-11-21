@@ -3,8 +3,9 @@
   "displayName": "块引用解释器",
   "description": "让 AI 读懂 Tine / Logseq 笔记中的 ((uuid)) 块引用，展开为真实内容",
   "version": "0.3.4",
-  "publisher": "local",
+  "publisher": "louis-15",
   "license": "MIT",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/Louis-15/block-reference-interpreter.git"

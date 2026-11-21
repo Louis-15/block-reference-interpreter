@@ -17,5 +17,8 @@ _ref_*/
 .DS_Store
 Thumbs.db
 
+# 本地工作区配置（含本机目录结构，对他人无意义）
+*.code-workspace
+
 # 开发者内部文档（设计稿、计划、调研记录），不对外发布
 docs/

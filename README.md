@@ -110,11 +110,18 @@ Release 页面提供一个单独的压缩包 **`notebook-instructions.zip`**，�
         └── block-reference.instructions.md    ← 文件名必须以此结尾
 ```
 
-以本项目的示例笔记库为例，完整路径是：
+在你自己的笔记库根目录下，完整路径就是：
 
 ```
-d:\扁舟听雨工作室\网文创作理论\.github\instructions\block-reference.instructions.md
+<笔记库根目录>/.github/instructions/block-reference.instructions.md
 ```
+
+按操作系统举例：
+
+| 系统 | 示例路径 |
+|---|---|
+| Windows | `D:\我的笔记库\.github\instructions\block-reference.instructions.md` |
+| macOS / Linux | `~/notes/.github/instructions/block-reference.instructions.md` |
 
 ### 三个必须核对的地方
 

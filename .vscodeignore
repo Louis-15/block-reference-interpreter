@@ -13,3 +13,5 @@ _ref_obsidian/**
 _ref_tine/**
 package-lock.json
 notebook-instructions.zip
+# 工作区配置只对本地开发有意义，不该进扩展包
+*.code-workspace

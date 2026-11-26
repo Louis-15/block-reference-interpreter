@@ -437,13 +437,23 @@ https://github.com/Louis-15/block-reference-interpreter/releases/latest/download
 
 ```yaml
 ---
-name: '块引用必须展开'
-description: '读 Tine/Logseq 笔记、遇到 ((uuid)) 或 {{embed ((uuid))}} 块引用时使用。'
+name: '块引用：读取与生成'
+description: '读或写 Tine/Logseq 笔记时使用。读：遇到 ((uuid)) 必须调用 #blockRef 展开真实内容；写：新建块用 #blockNewId，补 ID 用 #blockFind + #blockMakeRef，写完用 #blockCheck 校验。'
 applyTo: '**'
 ---
 ```
 
 `.instructions.md` 类文件依据 `applyTo` 的 glob 表达式决定作用范围，`applyTo: '**'` 表示对所有文件生效。
+
+### 升级扩展后必须重新复制
+
+**这一步最容易被忽略。** 指令文件放在**你的笔记库**里，不在扩展目录里，扩展升级不会自动更新它。
+
+从 0.4.x 升级到 0.5.0 及以上时，旧指令文件只讲「怎么读块引用」，没有「怎么生成块引用」的规则。若不替换，AI 仍然不会调用 `#blockNewId` / `#blockFind` / `#blockMakeRef` / `#blockCheck`，表现为「装了新版本但 AI 还是不会写块引用」。
+
+判断当前文件是否为新版：用文本编辑器打开，看是否有 `## 五、写笔记时如何生成块引用` 这一节。没有就说明是旧版，按上面「文件来源」重新下载覆盖即可。
+
+覆盖前注意：如果你曾在旧文件里加过自己的规则，请先把那些规则摘出来，覆盖后重新补进去。
 
 ### 指令文件的核心约束
 
@@ -452,6 +462,10 @@ applyTo: '**'
 3. 需要确认某个块被哪些位置引用时，使用 `#blockBacklinks`。
 4. `#blockNote` 在引用数量较多时应先以 `mode: "list"` 获取清单，再用 `#blockRef` 逐个读取，避免一次性展开数十处导致输出超出上限被截断。
 5. 工具返回「未找到」时，应如实告知用户，不得编造内容。
+6. 新建需要被引用的块时，必须用 `#blockNewId` 拿 UUID，不得自己编造。
+7. 给已有块补 `id::` 时用 `#blockFind` 定位、`#blockMakeRef` 拿补丁，按 `oldText`/`newText` 原样应用。
+8. 写完 `id::` 或 `((uuid))` 后必须调用 `#blockCheck` 校验。
+9. 区分「块内软换行」（缩进续行，不加 `- `）与「子块」（`- ` + 更深缩进），不要把同块多行写成多个块。
 
 ---
 

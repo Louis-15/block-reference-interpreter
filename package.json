@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "%blockReferenceInterpreter.displayName%",
   "description": "%blockReferenceInterpreter.description%",
-  "version": "0.4.0",
+  "version": "0.4.8",
   "publisher": "louis-15",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -139,6 +139,131 @@
             "blockId"
           ]
         }
+      },
+      {
+        "name": "tineBlockRef_newId",
+        "displayName": "%tineBlockRef_newId.displayName%",
+        "userDescription": "%tineBlockRef_newId.userDescription%",
+        "modelDescription": "%tineBlockRef_newId.modelDescription%",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "blockNewId",
+        "icon": "$(key)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "number",
+              "description": "%tineBlockRef_newId.count.description%"
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "%tineBlockRef_newId.labels.description%"
+            }
+          }
+        }
+      },
+      {
+        "name": "tineBlockRef_findBlocks",
+        "displayName": "%tineBlockRef_findBlocks.displayName%",
+        "userDescription": "%tineBlockRef_findBlocks.userDescription%",
+        "modelDescription": "%tineBlockRef_findBlocks.modelDescription%",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "blockFind",
+        "icon": "$(search)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "%tineBlockRef_findBlocks.query.description%"
+            },
+            "filePath": {
+              "type": "string",
+              "description": "%tineBlockRef_findBlocks.filePath.description%"
+            },
+            "limit": {
+              "type": "number",
+              "description": "%tineBlockRef_findBlocks.limit.description%"
+            },
+            "includeContent": {
+              "type": "boolean",
+              "description": "%tineBlockRef_findBlocks.includeContent.description%"
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      },
+      {
+        "name": "tineBlockRef_makeRef",
+        "displayName": "%tineBlockRef_makeRef.displayName%",
+        "userDescription": "%tineBlockRef_makeRef.userDescription%",
+        "modelDescription": "%tineBlockRef_makeRef.modelDescription%",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "blockMakeRef",
+        "icon": "$(link)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "%tineBlockRef_makeRef.filePath.description%"
+            },
+            "line": {
+              "type": "number",
+              "description": "%tineBlockRef_makeRef.line.description%"
+            },
+            "expectedFirstLine": {
+              "type": "string",
+              "description": "%tineBlockRef_makeRef.expectedFirstLine.description%"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "inline",
+                "embed"
+              ],
+              "description": "%tineBlockRef_makeRef.kind.description%"
+            }
+          },
+          "required": [
+            "filePath",
+            "line",
+            "expectedFirstLine"
+          ]
+        }
+      },
+      {
+        "name": "tineBlockRef_checkRefs",
+        "displayName": "%tineBlockRef_checkRefs.displayName%",
+        "userDescription": "%tineBlockRef_checkRefs.userDescription%",
+        "modelDescription": "%tineBlockRef_checkRefs.modelDescription%",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "blockCheck",
+        "icon": "$(checklist)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "%tineBlockRef_checkRefs.filePath.description%"
+            },
+            "blockIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "%tineBlockRef_checkRefs.blockIds.description%"
+            }
+          },
+          "required": [
+            "filePath"
+          ]
+        }
       }
     ],
     "commands": [
@@ -177,8 +302,41 @@
       {
         "command": "blockReferenceInterpreter.showLog",
         "title": "%blockReferenceInterpreter.command.showLog%"
+      },
+      {
+        "command": "blockReferenceInterpreter.copyBlockReference",
+        "title": "%blockReferenceInterpreter.command.copyBlockReference%"
+      },
+      {
+        "command": "blockReferenceInterpreter.copyBlockEmbed",
+        "title": "%blockReferenceInterpreter.command.copyBlockEmbed%"
+      },
+      {
+        "command": "blockReferenceInterpreter.insertSoftBreak",
+        "title": "%blockReferenceInterpreter.command.insertSoftBreak%"
       }
     ],
+    "keybindings": [
+      {
+        "command": "blockReferenceInterpreter.insertSoftBreak",
+        "key": "shift+enter",
+        "when": "editorTextFocus && editorLangId == markdown"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "blockReferenceInterpreter.copyBlockReference",
+          "when": "editorLangId == markdown",
+          "group": "blockReference@1"
+        },
+        {
+          "command": "blockReferenceInterpreter.copyBlockEmbed",
+          "when": "editorLangId == markdown",
+          "group": "blockReference@2"
+        }
+      ]
+    },
     "configuration": {
       "title": "%blockReferenceInterpreter.configuration.title%",
       "properties": {
@@ -266,15 +424,22 @@
         "tineBlockRef.inlineRender.mode": {
           "type": "string",
           "enum": [
+            "activeLine",
             "replace",
             "append"
           ],
           "enumDescriptions": [
+            "%tineBlockRef.inlineRender.mode.enum.activeLine%",
             "%tineBlockRef.inlineRender.mode.enum.replace%",
             "%tineBlockRef.inlineRender.mode.enum.append%"
           ],
-          "default": "replace",
+          "default": "activeLine",
           "description": "%tineBlockRef.inlineRender.mode%"
+        },
+        "tineBlockRef.enterSplitBlock": {
+          "type": "boolean",
+          "default": true,
+          "description": "%tineBlockRef.enterSplitBlock%"
         },
         "tineBlockRef.inlineRender.maxTitleLength": {
           "type": "number",

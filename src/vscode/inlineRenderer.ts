@@ -4,16 +4,20 @@
  * 效果对齐 Tine / Logseq 的原生行为：引用不再是裸 UUID，而是「那个块讲的是什么」。
  * 子块**不在行内显示**（会把行撑爆），鼠标悬停时才展开块 + 子块（见 hoverProvider）。
  *
- * 实现原理（这是唯一的可行路径，原因是 VS Code 没有开放"替换文本渲染"API）：
- * 1. 用 decoration 把原文 `((uuid))` 的字符宽度压成 0（`font-size: 0` 注入到 textDecoration 里）；
- * 2. 在同一个 range 上挂 `after` attachment，内容换成目标块标题。
+ * 三种模式（`tineBlockRef.inlineRender.mode`）：
+ * - `activeLine`（默认）：**光标所在行显示真实 `((uuid))` 原文**，其他行显示标题。
+ *   这是唯一同时满足「视觉接近 Tine」和「可编辑」的方案——VS Code 没有
+ *   替换文本的 API，只要把原文压成 0 宽度，鼠标就再也点不到引用右侧、
+ *   选不中、也无法在行尾回车新建块。光标一进这一行就还原原文，用户始终
+ *   能在真实字符上定位。
+ * - `replace`：所有行都隐藏原文、只显示标题。视觉最干净，但上述编辑问题无解。
+ * - `append`：保留原文，在后面追加 `〔标题〕`。光标行为完全正常。
  *
- * 由此带来的固有代价（必须让用户知道）：
- * - 光标经过被替换的引用时会"看不见"（字符还在，只是宽度为 0）；
- * - 复制粘贴拿到的仍然是原文 `((uuid))`，这是对的，但视觉上会有落差；
- * - 这是装饰层 hack，不是真正的 AST 渲染，某些主题/缩放设置下可能不够完美。
+ * 实现原理：用 decoration 把原文 `((uuid))` 的字符宽度压成 0
+ * （`font-size: 0` 注入到 textDecoration 里），再在同一个 range 上挂
+ * `after` attachment 显示标题。
  *
- * 所以提供了 `tineBlockRef.inlineRender.enabled` 开关，随时可以关掉回到裸 UUID。
+ * 被发现一次（曾被隐藏），所以是可选项而不是默认。
  */
 
 import * as vscode from 'vscode';
@@ -22,6 +26,11 @@ import { splitLines } from '../core/blockParser';
 import { t } from '../core/i18n';
 import type { GraphIndex } from '../core/graphIndex';
 import { detectGraphRoot, isGraphContentFile, nodePathProbe } from '../core/graphLocator';
+import {
+	modeDependsOnSelection,
+	planInlineDecorations,
+	type InlineRenderItem,
+} from '../core/inlineDecoration';
 import { scanReferences } from '../core/refScanner';
 import type { ReferenceHit } from '../core/types';
 import { getInlineTitle } from './hoverContent';
@@ -35,17 +44,6 @@ interface ReferenceCacheEntry {
 	references: ReferenceHit[];
 }
 
-/** 一处待渲染的引用。 */
-interface RenderItem {
-	/** 目标块 UUID（用于生成悬停内容）。 */
-	uuid: string;
-	range: vscode.Range;
-	/** 替换显示的文本。 */
-	text: string;
-	/** 是否为悬空引用（目标块不存在）。 */
-	missing: boolean;
-}
-
 export class BlockReferenceInlineRenderer implements vscode.Disposable {
 	/** 隐藏原文用的装饰类型。 */
 	private readonly hiddenType: vscode.TextEditorDecorationType;
@@ -55,6 +53,8 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly cache = new Map<string, ReferenceCacheEntry>();
+	/** 每个编辑器上次渲染时的活动行，用于避免选择变化导致的无意义重绘。 */
+	private readonly lastActiveLines = new Map<string, string>();
 	private disposed = false;
 
 	constructor(
@@ -102,6 +102,28 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 			}),
 			workspace.onDidCloseTextDocument((document) => {
 				this.cache.delete(document.uri.toString());
+				this.lastActiveLines.delete(document.uri.toString());
+			}),
+		);
+
+		/**
+		 * 光标移动：`activeLine` 模式要把活动行还原成真实原文。
+		 *
+		 * 必须监听 selection 而不是 document：内容没变，变的只是「哪一行该显示原文」。
+		 * 只在活动行集合真的变化时重绘，否则按住方向键移动光标会疯狂重设装饰。
+		 */
+		this.disposables.push(
+			window.onDidChangeTextEditorSelection((event) => {
+				if (!modeDependsOnSelection(readConfig().inlineRenderMode)) {
+					return;
+				}
+				const signature = selectionLinesSignature(event.textEditor);
+				const key = event.textEditor.document.uri.toString();
+				if (this.lastActiveLines.get(key) === signature) {
+					return;
+				}
+				this.lastActiveLines.set(key, signature);
+				void this.renderEditor(event.textEditor);
 			}),
 		);
 
@@ -201,13 +223,9 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 			return;
 		}
 		const index = this.getIndex();
-		const items: RenderItem[] = [];
+		const items: InlineRenderItem[] = [];
 
 		for (const hit of references) {
-			// 用扫描器给出的完整范围：embed 时包含 `{{embed ` 与 `}}`，
-			// 这样替换后不会残留外壳。
-			const range = new vscode.Range(hit.line, hit.column, hit.line, hit.endColumn);
-
 			// 与悬停预览共用同一套标题规则，避免「行内显示的」和「hover 推算的」不一致，
 			// 那样会导致视觉范围判定错位。
 			const title = getInlineTitle(
@@ -223,7 +241,11 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 
 			items.push({
 				uuid: hit.uuid,
-				range,
+				line: hit.line,
+				// 用扫描器给出的完整范围：embed 时包含 `{{embed ` 与 `}}`，
+				// 这样替换后不会残留外壳。
+				start: hit.column,
+				end: hit.endColumn,
 				text: title,
 				missing: index.lookupBlocks(hit.uuid).length === 0,
 			});
@@ -249,33 +271,38 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 	}
 
 	/** 应用装饰。 */
-	private apply(editor: vscode.TextEditor, items: RenderItem[]): void {
+	private apply(editor: vscode.TextEditor, items: InlineRenderItem[]): void {
 		const config = readConfig();
 		const linkColor = new vscode.ThemeColor('textLink.foreground');
 		const missingColor = new vscode.ThemeColor('errorForeground');
 
-		// replace 模式：把原文压成 0 宽度，视觉上"换成"目标标题。
-		// append 模式：保留原文，在后面追加 〔标题〕。
-		// 后者是安全退路——极少数主题/缩放下 font-size 注入可能不生效，
-		// 那时至少还能用，而不是变成「原文和替换文字都显示」的混乱状态。
-		const isReplaceMode = config.inlineRenderMode !== 'append';
+		// 活动行：光标与所有选区覆盖到的行。这些行要显示真实 `((uuid))`，
+		// 否则用户无法把光标定位到引用右侧，也无法选中或编辑引用。
+		const activeLines = modeDependsOnSelection(config.inlineRenderMode)
+			? collectSelectionLines(editor)
+			: undefined;
+
+		const slots = planInlineDecorations(items, config.inlineRenderMode, activeLines);
 
 		const hiddenOptions: vscode.DecorationOptions[] = [];
 		const replacementOptions: vscode.DecorationOptions[] = [];
 
-		for (const item of items) {
-			if (isReplaceMode) {
-				hiddenOptions.push({ range: item.range });
+		for (const slot of slots) {
+			const range = new vscode.Range(slot.item.line, slot.item.start, slot.item.line, slot.item.end);
+
+			if (slot.hide) {
+				hiddenOptions.push({ range });
+			}
+			if (slot.contentText === undefined) {
+				continue;
 			}
 
-			const contentText = isReplaceMode ? item.text : `〔${item.text}〕`;
-
 			replacementOptions.push({
-				range: item.range,
+				range,
 				renderOptions: {
 					after: {
-						contentText,
-						color: item.missing ? missingColor : linkColor,
+						contentText: slot.contentText,
+						color: slot.item.missing ? missingColor : linkColor,
 						textDecoration: 'none; text-decoration: underline; text-underline-offset: 2px;',
 						margin: '0',
 					},
@@ -285,6 +312,12 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 
 		editor.setDecorations(this.hiddenType, hiddenOptions);
 		editor.setDecorations(this.replacementType, replacementOptions);
+
+		// 记录本次实际渲染的活动行，供 selection 监听做差量判断。
+		this.lastActiveLines.set(
+			editor.document.uri.toString(),
+			selectionLinesSignature(editor),
+		);
 	}
 
 	/** 清空装饰。 */
@@ -338,4 +371,24 @@ export class BlockReferenceInlineRenderer implements vscode.Disposable {
 /** 供日志使用：让调用方知道渲染器已启用。 */
 export function describeInlineRenderer(): string {
 	return t('Inline rendering enabled (debounce {0}ms)', DEBOUNCE_MS);
+}
+
+/** 收集编辑器里所有光标与选区覆盖到的行号。 */
+function collectSelectionLines(editor: vscode.TextEditor): Set<number> {
+	const lines = new Set<number>();
+	for (const selection of editor.selections) {
+		// 选区可能跨很多行（Ctrl+A 时是全文），这里只关心「哪些行要显示原文」，
+		// 数量上限由文档行数决定，不会失控。
+		for (let line = selection.start.line; line <= selection.end.line; line++) {
+			lines.add(line);
+		}
+	}
+	return lines;
+}
+
+/** 活动行集合的紧凑签名，用于判断是否需要重绘。 */
+function selectionLinesSignature(editor: vscode.TextEditor): string {
+	return editor.selections
+		.map((selection) => `${selection.start.line}-${selection.end.line}`)
+		.join(',');
 }

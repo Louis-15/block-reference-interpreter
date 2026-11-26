@@ -117,6 +117,14 @@ describe('parseMarkdown 块 ID 归属', () => {
 		expect(parsed.blocks[0]?.id).toBe('abcdefab-1111-2222-3333-444444444444');
 	});
 
+	it('键名大小写不敏感：ID:: 也能识别', () => {
+		// Tine 写小写 `id::`，但手写/导入数据里会出现 `ID::`。
+		// 不识别会让生成功能误判成「无 ID」并重复插入第二行。
+		const content = ['- 块', '  ID:: 66666666-6666-4666-8666-666666666666'].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		expect(parsed.blocks[0]?.id).toBe('66666666-6666-4666-8666-666666666666');
+	});
+
 	it('空块也能携带 ID', () => {
 		const content = ['-', '  id:: 11111111-1111-1111-1111-111111111111'].join('\n');
 		const parsed = parseMarkdown('x.md', content);

@@ -17,12 +17,15 @@ import {
 } from './vscode/commands/expandCommands';
 import { showBacklinksPanel } from './vscode/commands/backlinkPanel';
 import { openBacklinkAt } from './vscode/commands/backlinkJump';
+import { copyBlockEmbedCommand, copyBlockReferenceCommand } from './vscode/commands/blockRefCommands';
+import type { BlockRefDeps } from './vscode/blockIdService';
 import { OPEN_BACKLINK_AT_COMMAND, SHOW_BACKLINKS_PANEL_COMMAND } from './vscode/backlinkCommands';
 import { BacklinkInlayProvider } from './vscode/backlinkInlay';
 import { BacklinkLensProvider } from './vscode/backlinkLens';
 import { BlockReferenceHoverProvider } from './vscode/hoverProvider';
 import { IndexService, readConfig } from './vscode/indexService';
 import { BlockReferenceInlineRenderer, describeInlineRenderer } from './vscode/inlineRenderer';
+import { registerEnterBehavior } from './vscode/enterBehavior';
 import { ReadOnlyContentProvider, VIRTUAL_SCHEME } from './vscode/readOnlyContent';
 import { installTranslator } from './vscode/l10nSetup';
 import { t } from './core/i18n';
@@ -30,6 +33,10 @@ import { VirtualDocumentLinkProvider } from './vscode/virtualDocumentLinks';
 import { FindBacklinksTool } from './vscode/tools/findBacklinksTool';
 import { ReadBlockTool } from './vscode/tools/readBlockTool';
 import { ReadNoteTool } from './vscode/tools/readNoteTool';
+import { CheckRefsTool } from './vscode/tools/checkRefsTool';
+import { FindBlocksTool } from './vscode/tools/findBlocksTool';
+import { MakeRefTool } from './vscode/tools/makeRefTool';
+import { NewIdTool } from './vscode/tools/newIdTool';
 
 /** 输出通道名由 t() 提供，跟随 `tineBlockRef.language` 设置。 */
 
@@ -84,6 +91,14 @@ export function activate(context: vscode.ExtensionContext): void {
 	registerInlineRenderer(context, indexService, deps, log);
 	registerBacklinkMarkers(context, indexService, deps, log);
 	registerLanguageModelTools(context, indexService, log);
+
+	// 回车拆块 + Shift+Enter 块内换行：让编辑手感对齐 Tine / Logseq。
+	context.subscriptions.push(
+		registerEnterBehavior({
+			isIndexedFile: (filePath) => indexService.isIndexedFile(filePath),
+			log,
+		}),
+	);
 
 	/*
 	 * 语言设置变化：重装翻译器即可让后续文案立刻换语言。
@@ -161,6 +176,16 @@ function registerCommands(
 			() => indexService.rebuild({ notify: true }),
 		);
 	});
+
+	// 人工复制块引用：与 Tine 的「复制块引用」一致，必要时补 id:: 并保存。
+	const refDeps: BlockRefDeps = {
+		getIndex: () => indexService.getIndex(),
+		isIndexedFile: (filePath) => indexService.isIndexedFile(filePath),
+		ensureReady: () => indexService.ensureReady(),
+		log: (message) => output.appendLine(message),
+	};
+	register('blockReferenceInterpreter.copyBlockReference', () => copyBlockReferenceCommand(refDeps));
+	register('blockReferenceInterpreter.copyBlockEmbed', () => copyBlockEmbedCommand(refDeps));
 
 	register('blockReferenceInterpreter.selectGraphRoot', async () => {
 		// switchTo → rebuild 会自动弹出索引结果提示；用户取消选择时 switchTo 不会被调用，也就不会误报。
@@ -317,8 +342,25 @@ function registerLanguageModelTools(
 				'tineBlockRef_findBacklinks',
 				new FindBacklinksTool(getIndex, ensureReady, getGraphRoot),
 			),
+			vscode.lm.registerTool('tineBlockRef_newId', new NewIdTool(getIndex, ensureReady)),
+			vscode.lm.registerTool(
+				'tineBlockRef_findBlocks',
+				new FindBlocksTool(getIndex, ensureReady, getGraphRoot),
+			),
+			vscode.lm.registerTool(
+				'tineBlockRef_makeRef',
+				new MakeRefTool(getIndex, ensureReady, getGraphRoot),
+			),
+			vscode.lm.registerTool(
+				'tineBlockRef_checkRefs',
+				new CheckRefsTool(getIndex, ensureReady, getGraphRoot),
+			),
 		);
-		log(t('[Tools] Registered 3 AI tools: readBlock / readNote / findBacklinks'));
+		log(
+			t(
+				'[Tools] Registered 7 AI tools: readBlock / readNote / findBacklinks / newId / findBlocks / makeRef / checkRefs',
+			),
+		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		log(t('[Error] Failed to register the AI tools: {0}', message));

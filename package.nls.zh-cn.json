@@ -13,6 +13,9 @@
   "blockReferenceInterpreter.command.rebuildIndex": "块引用：重建索引",
   "blockReferenceInterpreter.command.selectGraphRoot": "块引用：选择 Tine 图谱目录",
   "blockReferenceInterpreter.command.showLog": "块引用：显示日志",
+  "blockReferenceInterpreter.command.copyBlockReference": "块引用：复制当前块的引用",
+  "blockReferenceInterpreter.command.copyBlockEmbed": "块引用：复制当前块的嵌入引用",
+  "blockReferenceInterpreter.command.insertSoftBreak": "块引用：在当前块内换行（软换行）",
 
   "tineBlockRef.language": "本扩展的提示、悬停、面板与工具结果使用的语言。注意：命令标题与设置项名称由 VS Code 界面语言决定，无法在此覆盖。",
   "tineBlockRef.language.enum.auto": "跟随 VS Code 界面语言（默认）",
@@ -26,7 +29,7 @@
   "tineBlockRef.hoverPreviewLines": "悬停预览显示的块内容行数。行数越少，整体高度越矮，底部的「展开全文/反向链接」按钮越不容易被滚动隐藏。",
   "tineBlockRef.hideProperties": "渲染块内容时隐藏的属性名（不含 ::）。",
   "tineBlockRef.inlineRender.enabled": "在编辑器里把 ((uuid)) 直接显示成目标块的首行文本（类似 Tine/Logseq 的原生效果）。关闭后显示原始 UUID。",
-  "tineBlockRef.inlineRender.mode": "行内渲染的方式。若发现 replace 模式下光标定位异常，可切换到 append。",
+  "tineBlockRef.inlineRender.mode": "行内渲染的方式。activeLine 在光标所在行显示真实 ((uuid))、其他行显示目标块标题，是唯一能自由定位光标、选中并编辑引用的模式。",
   "tineBlockRef.inlineRender.maxTitleLength": "行内渲染时目标块标题的最大长度，超出会截断并加省略号，避免把行撑爆。",
   "tineBlockRef.inlineRender.showMissing": "目标块不存在时，在行内显示「⚠ 块不存在」而不是原始 UUID，便于一眼发现失效引用。",
   "tineBlockRef.render.stripHeadingMarks": "在行内渲染、悬停预览、展开文档中，去掉块标题的 Markdown 标记（#、## 等）。AI 工具返回的内容不受此设置影响，仍保留标题标记以便模型识别层级。",
@@ -37,8 +40,10 @@
   "tineBlockRef.backlinks.itemsPerPage": "反链面板中每个页面最多显示多少条引用。超出部分会汇总提示，避免单页引用过多时面板过长。",
   "tineBlockRef.backlinks.pathDepth": "反链面板中每个引用块显示的祖先层级数（面包屑层数）。层级太深时只保留最靠近引用的几级。",
 
-  "tineBlockRef.inlineRender.mode.enum.replace": "隐藏原文 UUID，只显示目标块标题（最接近笔记软件原生效果）",
-  "tineBlockRef.inlineRender.mode.enum.append": "保留原文 UUID，在其后追加〔目标块标题〕（更保守，光标行为完全正常）",
+  "tineBlockRef.inlineRender.mode.enum.activeLine": "显示目标块标题，但光标所在行显示真实 ((uuid))（推荐：完全可编辑）",
+  "tineBlockRef.inlineRender.mode.enum.replace": "始终隐藏原文 UUID，只显示目标块标题（视觉最干净，但光标无法定位到引用右侧）",
+  "tineBlockRef.inlineRender.mode.enum.append": "保留原文 UUID，在其后追加〔目标块标题〕（光标行为完全正常）",
+  "tineBlockRef.enterSplitBlock": "在 Tine / Logseq 笔记里，块内按回车会把块拆成两个同级块。关闭后恢复 VS Code 原生换行行为。",
   "tineBlockRef.backlinks.style.enum.inline": "块行尾显示「🔗 N」徽章，悬停可看到引用此块的页面列表。与 Tine 的表现一致（默认）",
   "tineBlockRef.backlinks.style.enum.lens": "块上方单独一行显示「N 条链接引用」。若 VS Code 关掉了 InlayHint（editor.inlayHints.enabled）可用这个",
   "tineBlockRef.backlinks.style.enum.off": "不显示任何反链标记，仍可用命令查看",
@@ -50,5 +55,33 @@
   "tineBlockRef_readNote.displayName": "读取笔记并展开块引用",
   "tineBlockRef_readNote.userDescription": "读取整篇 Tine / Logseq 笔记，自动展开其中的所有块引用",
   "tineBlockRef_findBacklinks.displayName": "查询块的反向链接",
-  "tineBlockRef_findBacklinks.userDescription": "查找哪些笔记引用了指定的块 UUID"
+  "tineBlockRef_findBacklinks.userDescription": "查找哪些笔记引用了指定的块 UUID",
+
+  "tineBlockRef_newId.displayName": "生成块 ID",
+  "tineBlockRef_newId.userDescription": "生成 Tine / Logseq 块 ID（UUID v4），并给出可直接写入的 id:: 行与引用语法",
+  "tineBlockRef_newId.modelDescription": "为 Tine / Logseq 笔记生成一个或多个新的持久块 ID（UUID v4）。返回精确的 `id::` 属性行、行内引用 `((uuid))`、嵌入引用 `{{embed ((uuid))}}` 以及放置规则。不会写入任何文件。\n\n何时使用：你正在新建一个之后会被别处引用的块，或在手写 `id::` 与 `((uuid))` 之前需要一个 UUID。不要自己编造 UUID，必须使用本工具返回的值。\n\n重要：`id::` 要放在块首行之后、比块项目符号多两个空格缩进、正文与子块之前。如果新块首行本身是代码围栏（例如 `- ```js`），把 `id::` 放在闭合围栏之后、子块之前；Logseq 可能不识别这种写法。",
+  "tineBlockRef_newId.count.description": "生成几个 ID，1–20，默认 1。",
+  "tineBlockRef_newId.labels.description": "可选标签，按顺序对应每个 ID，避免把 UUID 和块对应错。",
+
+  "tineBlockRef_findBlocks.displayName": "按标题或内容查找块",
+  "tineBlockRef_findBlocks.userDescription": "按标题或正文搜索 Tine / Logseq 块，返回文件、行号、面包屑与 UUID",
+  "tineBlockRef_findBlocks.modelDescription": "按标题或正文搜索 Tine / Logseq 块。返回候选的文件、1-based 行号、面包屑、UUID（或「需要补 ID」）与子树规模。搜索结果包含编辑器中尚未保存的内容。\n\n何时使用：引用一个已有块之前，先找到它。候选有 ID 时直接写 `((uuid))`；没有 ID 时，用候选的文件与行号调用 `#blockMakeRef` 获取补丁。查询按空格分词，所有词都必须匹配；设置 `includeContent: true` 可搜索块正文，而不只是首行。",
+  "tineBlockRef_findBlocks.query.description": "块标题或短语。空格分隔的多个词必须全部命中。",
+  "tineBlockRef_findBlocks.filePath.description": "可选：只搜索一篇笔记。绝对路径或相对图谱根的路径。",
+  "tineBlockRef_findBlocks.limit.description": "最多返回多少条，默认 10，最大 30。",
+  "tineBlockRef_findBlocks.includeContent.description": "搜索块正文（`ownLines`），而不只是块首行。默认 false。",
+
+  "tineBlockRef_makeRef.displayName": "准备块引用与补丁",
+  "tineBlockRef_makeRef.userDescription": "为没有 id:: 的块生成 UUID、引用文本和精确补丁",
+  "tineBlockRef_makeRef.modelDescription": "准备引用某个块所需的全部内容：UUID、引用文本，以及在块没有 `id::` 时用于补 ID 的精确 `oldText` / `newText` 补丁（附 unified diff 兜底）。\n\n何时使用：`#blockFind` 或文件读取找到了目标块，但块没有 `id::`。传入文件路径、块内任意 1-based 行号，以及 `expectedFirstLine`（块首行去掉 `- ` 后的文本），工具会校验目标。用你自己的文件编辑工具应用返回的补丁，再写引用，最后调用 `#blockCheck`。\n\n本工具绝不写文件。块已有 ID 时返回该 ID 并标记 `existing: true`。目标非法（页首隐式块、未闭合代码围栏、重复 UUID）时解释原因，不猜测。",
+  "tineBlockRef_makeRef.filePath.description": "笔记路径。绝对路径或相对图谱根的路径。",
+  "tineBlockRef_makeRef.line.description": "目标块内的 1-based 行号。工具会取包含该行的最深块。",
+  "tineBlockRef_makeRef.expectedFirstLine.description": "目标块首行去掉前导 `- ` 后的文本（也接受原始首行）。用于校验目标没有变化。",
+  "tineBlockRef_makeRef.kind.description": "引用形态：`inline` 为 `((uuid))`，`embed` 为 `{{embed ((uuid))}}`。默认 inline。",
+
+  "tineBlockRef_checkRefs.displayName": "校验块 ID 与引用",
+  "tineBlockRef_checkRefs.userDescription": "检查笔记中的悬空引用、重复 UUID、位置错误的 id:: 与畸形引用",
+  "tineBlockRef_checkRefs.modelDescription": "审计一篇 Tine / Logseq 笔记的块 ID 与引用问题。报告错误（悬空引用、重复 UUID、`id::` 写在正文之后、畸形 `((...))`）与警告（v8 运行时形态 UUID、零缩进 ID、代码围栏之后的 ID）。不会写入任何文件。\n\n何时使用：用你自己的编辑工具写完 `id::` 或 `((uuid))` 之后，在告诉用户笔记完成之前，用它验证结果。",
+  "tineBlockRef_checkRefs.filePath.description": "笔记路径。绝对路径或相对图谱根的路径。",
+  "tineBlockRef_checkRefs.blockIds.description": "可选：只检查这些 UUID 的引用。ID 本身的格式/位置问题始终检查整个文件。"
 }

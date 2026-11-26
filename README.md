@@ -11,7 +11,7 @@ Parses Tine / Logseq `((uuid))` block references inside VS Code, so both the edi
 | Extension ID | `louis-15.block-reference-interpreter` |
 | Works with | Tine, Logseq, and other notes apps using the same block-reference syntax |
 | Platforms | Windows / macOS / Linux |
-| Data safety | Read-only. Never modifies, reformats or rewrites your notes |
+| Data safety | AI tools and read paths are read-only. The only write path is the "Copy block reference / embed" command, which inserts one `id::` line when needed |
 | License | MIT |
 
 ## Part 1 · What it does
@@ -51,8 +51,10 @@ All four behave identically in inline rendering, hover preview, AI tools and exp
 | Feature | Description |
 |---|---|
 | Index | Background scan of `pages/` and `journals/`, building UUID → block and UUID → reference maps in memory. Built and maintained automatically as soon as a vault is opened |
-| AI tools (3) | Let Copilot Chat read block content on demand. Nothing is written to disk |
-| Inline rendering | Shows `((uuid))` as the target block's title, close to the native note-app experience |
+| AI tools (7) | Read blocks, whole notes and backlinks; generate new block IDs, find blocks, prepare reference patches, and audit references |
+| Block reference generation | AI writes valid `id::` and `((uuid))` via `#blockNewId`, `#blockFind`, `#blockMakeRef` and `#blockCheck`; you can also right-click and copy a reference or embed in one step |
+| Inline rendering | Shows `((uuid))` as the target block's title, and reveals the real UUID on the line your cursor is on so it stays fully editable |
+| Enter and soft line breaks | Enter splits blocks (empty blocks keep producing empty blocks); Shift+Enter inserts a soft line break inside a block, matching Tine / Logseq |
 | Hover preview | Shows the target block and all of its children |
 | Expanded view | Whole note, block at cursor, or block by UUID — rendered in a webview panel where every block is labelled with its source and clickable back to the original |
 | Backlinks | Reference count at the end of the block line, hover list of referencing pages, and a full grouped panel with restored indentation, expanded subtrees, folding and click-to-jump. Also available to AI via `#blockBacklinks` |
@@ -136,6 +138,12 @@ Work through these six checks in order.
 | `#blockRef` | Read a block and all its children by UUID |
 | `#blockNote` | Read a whole note with every block reference expanded |
 | `#blockBacklinks` | Find where a block is referenced |
+| `#blockNewId` | Generate fresh Tine / Logseq block IDs (UUID v4) with the exact `id::` line and reference text |
+| `#blockFind` | Search blocks by title or body, returning file, line, breadcrumb, and UUID |
+| `#blockMakeRef` | Produce a precise patch (`oldText` / `newText` plus unified diff) for a block without `id::` |
+| `#blockCheck` | Audit `id::` placement, dangling references, duplicate UUIDs, and malformed references |
+
+Reading and auditing tools are memory-only. `#blockMakeRef` returns text; the AI applies it with its own editing tool, which keeps Copilot's accept/reject step in the loop.
 
 `#blockNote` has three modes: `list` (just the reference list — several KB, prefer it when there are many references), `expand` (default, full expansion), and `both`. Beyond eight references `expand` attaches the list automatically and reports any lines that exceeded the output budget.
 
@@ -143,7 +151,33 @@ Work through these six checks in order.
 
 `((uuid))` is replaced by the target block's first line. Child blocks are not shown inline — hover for those. Missing targets render as `⚠ Block not found`; duplicate UUIDs render as `Title (N duplicates)`.
 
-Two modes: `replace` (default, hides the original UUID — closest to the notes app) and `append` (keeps the UUID and appends `〔Title〕`, so cursor behaviour is completely normal). In `replace` mode the original UUID is compressed to zero width, so the cursor is invisible while passing over it; copy-paste still yields the raw text. Switch to `append` if you edit references often.
+Three modes (`tineBlockRef.inlineRender.mode`):
+
+| Mode | Effect |
+|---|---|
+| `activeLine` (default) | Shows the target title everywhere, **but reveals the real `((uuid))` on the line your cursor is on**. This is the only mode where you can place the cursor to the right of a reference, select it, and edit it |
+| `replace` | Always hides the raw UUID and shows only the title. Cleanest look, but VS Code compresses the UUID to zero width, so the cursor can no longer reach the right side of a reference |
+| `append` | Keeps the raw UUID visible and appends `〔Title〕`. Cursor behaviour is always normal |
+
+Why `activeLine` is the default: VS Code has no API to render replacement text, so the only way to show a title in place of `((uuid))` is a decoration that sets `font-size: 0` on the original characters. That also destroys the clickable area, which is why in `replace` mode pressing Enter on such a line produces a soft line break instead of a new block. `activeLine` sidesteps the problem by restoring the real characters on the line you are editing.
+
+Copy-paste always yields the raw `((uuid))` text. Turn `tineBlockRef.inlineRender.enabled` off to see bare UUIDs everywhere.
+
+> **About embeds**: Tine's native embed expands the whole block. Inline rendering here shows only the first line, because expanding many lines into one would break the note's layout. Hover to see the block and its children.
+
+#### Editing: Enter and Shift+Enter
+
+Inside the Tine graph (`pages/**`, `journals/**` only), typing is aligned with Tine / Logseq:
+
+| Key | Behaviour |
+|---|---|
+| **Enter** | Splits the current block into two **sibling** blocks, keeping the original indentation. Empty blocks keep producing new empty blocks, so you can leave as many blank blocks as you like |
+| **Enter** outside any block | Inserts a `- ` bullet, so the new line becomes an outline block. This applies to blank lines, top-level text, and files with no blocks yet |
+| **Shift+Enter** | Inserts a **soft line break inside the block**: newline plus content indentation (block indent + two spaces), no new bullet |
+| Both keys inside a code fence | Plain newline only. `Enter` does not add `- `, and `Shift+Enter` does not auto-indent, which would break indentation-sensitive languages such as Python |
+| Both keys in frontmatter, page properties, tables, or with a selection | Not intercepted; VS Code behaves normally |
+
+Only files inside the indexed graph are affected, so ordinary Markdown folders keep their default behaviour. Set `tineBlockRef.enterSplitBlock` to `false` to turn Enter handling off entirely.
 
 ### 4.3 Hover preview
 
@@ -179,7 +213,9 @@ Two differences are unavoidable: the count sits at the end of the line rather th
 
 ### 4.7 Commands
 
-All nine commands live under "Block Reference:" in the command palette: expand current note, expand reference at cursor, expand block by UUID, show backlinks for reference at cursor, show backlinks for block, open backlinks panel, rebuild index, select Tine graph directory, show log.
+All ten commands live under "Block Reference:" in the command palette: expand current note, expand reference at cursor, expand block by UUID, show backlinks for reference at cursor, show backlinks for block, open backlinks panel, copy reference to current block, copy embed to current block, insert soft line break inside the block, rebuild index, select Tine graph directory, show log.
+
+"Copy reference / embed to current block" behaves like Tine's *Copy block reference*: if the block has no `id::`, one is inserted, the note is saved, and `((uuid))` or `{{embed ((uuid))}}` is placed on the clipboard.
 
 "Rebuild index" and "Select Tine graph directory" are fallbacks, not daily steps.
 
@@ -205,15 +241,24 @@ Check the `[Index] Graph root:` line in the output channel. The path must actual
 
 ### 5.4 Data safety
 
-The extension is **read-only**. All output goes to webview panels, read-only virtual documents, the output channel, or tool return values. No file is created in your vault.
+The AI tools and all read paths are **read-only**: they never modify, reformat, or rewrite notes. Everything they produce goes to webview panels, read-only virtual documents, the output channel, or tool return values.
+
+There is exactly one write path, and you trigger it yourself: **Block Reference: Copy Reference / Copy Embed to Current Block**. When the target block has no `id::`, that command inserts a single `id::` line and saves the document before copying. No other command and no AI tool writes to your vault.
 
 ### 5.5 Known limitations
 
 Only `pages/` and `journals/` are indexed. Backlink badge position and panel placement differ from Tine for the reasons above. Badges depend on `editor.inlayHints.enabled`. The expanded view has no Ctrl+F (use the webview's own find). With several vaults open only one is indexed. Dangling references and duplicate IDs are reported explicitly rather than silently.
 
+In `replace` inline-rendering mode the original UUID is compressed to zero width, so the cursor cannot reach the right side of a reference. Use the default `activeLine` mode (or `append`) if you edit references often.
+
 ### 5.6 Settings
 
-See the settings page (search `tineBlockRef`). Every setting is documented inline.
+See the settings page (search `tineBlockRef`). Every setting is documented inline. The two that affect editing:
+
+| Setting | Default | Effect |
+|---|---|---|
+| `tineBlockRef.inlineRender.mode` | `activeLine` | `activeLine` reveals the raw UUID on the cursor line / `replace` always hides it / `append` keeps it visible and appends the title |
+| `tineBlockRef.enterSplitBlock` | `true` | Enter splits blocks and Shift+Enter inserts a soft line break inside the Tine graph |
 
 ## Appendix · Development
 
@@ -239,7 +284,7 @@ Parsing logic lives in `src/core/` and deliberately does not import `vscode`, so
 | 扩展 ID | `louis-15.block-reference-interpreter`（沿用早期命名，扩展上架后不可变更） |
 | 适用笔记软件 | Tine、Logseq，以及采用相同块引用格式的同类实现 |
 | 运行平台 | Windows / macOS / Linux |
-| 数据安全 | 全程只读，不修改、不格式化、不重写任何笔记文件 |
+| 数据安全 | AI 工具与读取路径只读；唯一写入路径是用户主动执行的「复制块引用 / 嵌入引用」，必要时插入一行 `id::` |
 | 许可证 | MIT |
 
 ---
@@ -286,8 +331,10 @@ Tine 与 Logseq 均提供反链面板，VS Code 原生不具备。本插件的�
 | 功能 | 说明 |
 |---|---|
 | 索引 | 后台扫描 `pages/` 与 `journals/`，建立 UUID → 块、UUID → 引用的内存索引。打开笔记库即自动建立并持续维护，无需手动操作 |
-| AI 工具（3 个） | 使 Copilot Chat 能够在后台直接读取块内容，不产生任何文件 |
-| 行内渲染 | 将 `((uuid))` 直接显示为目标块标题，接近笔记软件的原生观感 |
+| AI 工具（7 个） | 读取块 / 整篇笔记 / 反链，生成新块 ID、查找块、准备引用补丁、校验引用 |
+| 生成块引用 | AI 用 `#blockNewId`、`#blockFind`、`#blockMakeRef`、`#blockCheck` 写出合法的 `id::` 与 `((uuid))`；人工可通过右键菜单「复制当前块的引用 / 嵌入引用」一步完成 |
+| 行内渲染 | 将 `((uuid))` 直接显示为目标块标题；光标所在行显示真实 UUID，可自由定位、选中与编辑 |
+| 回车与块内换行 | 回车拆出同级块（空块继续产生空块），Shift+Enter 在块内软换行，与 Tine / Logseq 一致 |
 | 悬停预览 | 鼠标悬停在引用上时显示目标块及其全部子块 |
 | 展开全文 | 支持整篇、光标处、按 UUID 三种粒度，输出到网页面板；每个块标注来源，单击即可跳回原文 |
 | 反向链接 | 块行尾显示引用计数，悬停列出引用页面，完整面板按页面分组、还原缩进、展示引用处的全部子块，支持折叠与单击跳转；AI 可通过 `#blockBacklinks` 查询 |
@@ -457,7 +504,7 @@ code --list-extensions --show-versions | Select-String block-reference
 
 打开任意一篇包含 `((uuid))` 的笔记。
 
-**预期结果**：`((uuid))` 不再显示为 ID 字符串，而是显示为目标块的标题。
+**预期结果**：`((uuid))` 不再显示为 ID 字符串，而是显示为目标块的标题；把光标移到那一行，标题会还原成真实的 `((uuid))`，此时可以正常选中、编辑。
 
 若仍显示为裸 UUID，请检查设置 `tineBlockRef.inlineRender.enabled` 是否被关闭。
 
@@ -489,13 +536,23 @@ code --list-extensions --show-versions | Select-String block-reference
 
 ## 4.1 AI 工具
 
-安装插件并重载窗口后，Copilot Chat 的 agent 模式会自动获得三个工具。这些工具仅在内存中计算，**不会创建或修改任何文件**。
+安装插件并重载窗口后，Copilot Chat 的 agent 模式会自动获得七个工具。读取与校验类工具仅在内存中计算，**不会创建或修改任何文件**；补丁类工具只返回文本，由 AI 用自己的编辑工具落盘。
 
 | `#` 引用名 | 用途 |
 |---|---|
 | `#blockRef` | 按 UUID 读取块及其全部子块 |
 | `#blockNote` | 读取整篇笔记并展开其中的块引用 |
 | `#blockBacklinks` | 查询引用该块的位置 |
+| `#blockNewId` | 生成新的 Tine / Logseq 块 ID（UUID v4），返回 `id::` 行与引用文本 |
+| `#blockFind` | 按标题或正文搜索块，返回文件、行号、面包屑与 UUID |
+| `#blockMakeRef` | 为没有 `id::` 的块生成精确补丁（`oldText` / `newText` + unified diff） |
+| `#blockCheck` | 校验 `id::` 位置、悬空引用、重复 UUID、畸形引用等问题 |
+
+### 写笔记时的推荐顺序
+
+1. 新建块并需要被引用：`#blockNewId` → 写入 `id::`；
+2. 引用已有块：`#blockFind` → 有 ID 直接引用，没有 ID 用 `#blockMakeRef` 拿补丁；
+3. 写完：`#blockCheck` 校验，有错误先修。
 
 ### `#blockNote` 的三种模式
 
@@ -534,18 +591,34 @@ code --list-extensions --show-versions | Select-String block-reference
 - 同一 UUID 重复定义时显示 `标题（N 处重复）`。
 - 行内文字为纯展示内容，不可点击；查看完整内容请悬停后点击「展开全文」。
 
-### 两种渲染模式
+### 三种渲染模式
 
 | 模式 | 效果 | 适用场景 |
 |---|---|---|
-| `replace`（默认） | 隐藏原文，仅显示标题 | 最接近笔记软件的原生观感 |
-| `append` | 保留原文，在其后追加 `〔标题〕` | 光标行为完全正常，编辑时更便利 |
+| `activeLine`（默认） | 平时显示标题；**光标所在行显示真实 `((uuid))`** | 唯一能自由定位光标、选中、编辑引用的模式 |
+| `replace` | 始终隐藏原文，仅显示标题 | 视觉最接近笔记软件，但光标无法到达引用右侧 |
+| `append` | 保留原文，在其后追加 `〔标题〕` | 任何时候都能精确点击，UUID 一直可见 |
 
-`replace` 模式存在固有代价：原文字符宽度被压缩为 0，光标经过引用位置时不可见。复制粘贴得到的仍是原文 `((uuid))`，这一点是正确的。若需频繁直接编辑引用本身，建议改用 `append` 模式。
+为什么默认改成 `activeLine`：VS Code 没有「替换显示文本」的 API，只能把原文压缩成 0 宽度再用装饰层画标题。字符宽度归零后，鼠标再也点不到引用右侧，引用也选不中、编辑不了，行尾回车还会变成块内换行而不是新建块。`activeLine` 在你正在编辑的那一行还原真实字符，从根本上避开这个问题。
 
-切换方式：在设置中搜索 `tineBlockRef.inlineRender.mode`，或直接关闭 `tineBlockRef.inlineRender.enabled` 恢复显示裸 UUID。
+复制粘贴得到的仍然是原文 `((uuid))`，这一点是正确的。关闭 `tineBlockRef.inlineRender.enabled` 可恢复显示裸 UUID。
 
 > **关于 embed 的显示**：Tine 原生的 embed 会展开显示整个块的内容。本插件的行内渲染仅显示首行标题，因为多行内容压入单行会破坏笔记排版。需要查看完整内容时，悬停即可看到块及其全部子块。
+
+### 回车与块内换行
+
+只对 Tine 图谱内（`pages/**`、`journals/**`）的 Markdown 生效，编辑手感与 Tine / Logseq 对齐：
+
+| 按键 | 行为 |
+|---|---|
+| **回车** | 把当前块拆成两个**同级**块，保留原缩进 |
+| **回车（空块）** | 继续产生新的空块，想空几行就空几行 |
+| **回车（块外）** | 插入 `- `，让新行变成大纲块。块间空行、顶格文本、还没有块的新文件都适用 |
+| **Shift+Enter** | **块内换行**：插入换行 + 内容缩进（块缩进 + 两个空格），不产生新块 |
+| 两者在代码围栏内 | 只插入纯换行。回车不会加 `- `，Shift+Enter 也不会自动缩进，避免破坏 Python 等缩进敏感语言 |
+| 两者在 frontmatter / 页面属性 / 表格 / 有选区时 | 不接管，保持 VS Code 原生行为 |
+
+图谱外的普通 Markdown 完全不受影响。把 `tineBlockRef.enterSplitBlock` 设为 `false` 可整体关闭回车接管。
 
 ## 4.3 悬停预览
 
@@ -818,6 +891,9 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 | 块引用：查看光标处块引用的反向链接 | 确认某条内容的引用位置并跳转 |
 | 块引用：查看块的反向链接 | 手动输入 UUID 查询并跳转 |
 | 块引用：打开反链面板 | 通读完整反链（亦可从行尾徽章的悬停框进入） |
+| 块引用：复制当前块的引用 | 像 Tine 的「复制块引用」：必要时补 `id::`、保存，再复制 `((uuid))` |
+| 块引用：复制当前块的嵌入引用 | 同上，复制 `{{embed ((uuid))}}` |
+| 块引用：在当前块内换行（软换行） | 等价于 Shift+Enter：块内换行，不产生新块 |
 | 块引用：重建索引 | 兜底手段。日常无需使用，索引会自动维护 |
 | 块引用：选择 Tine 图谱目录 | 自动探测失败时，或需要在多个笔记库间切换 |
 | 块引用：显示日志 | 排查问题 |
@@ -912,12 +988,14 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 
 ## 5.4 数据安全
 
-**本插件全程只读**：不修改、不格式化、不重写任何笔记文件。所有输出均指向以下位置：
+**AI 工具与所有读取路径全程只读**：不修改、不格式化、不重写任何笔记文件。它们的输出全部指向以下位置：
 
 - 网页面板（反链、展开全文；关闭时不会提示保存，也不产生磁盘文件）
 - 只读虚拟文档（仅供 `backlinks.panel = text` 的文本版反链使用）
 - 输出面板日志
 - 工具返回值与悬停提示
+
+只有一条写入路径，而且由你主动触发：**「块引用：复制当前块的引用 / 嵌入引用」**。当目标块没有 `id::` 时，该命令会插入一行 `id::` 并保存文档，然后复制引用。除此之外，任何命令与 AI 工具都不会写入笔记库。
 
 ## 5.5 已知限制
 
@@ -929,7 +1007,8 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 - 悬空引用（目标块已被删除）会明确标注为「未找到」，不会静默失败。
 - 重复 ID（同一 UUID 出现在多个文件）会列出全部候选并提示歧义。
 - Tine 自带的 `tine block show` 命令在 Windows 上不可用（报错 `cannot reach a graph's owner`），因此本插件自行实现解析，不依赖该 CLI。
-- 行内渲染在 `replace` 模式下会将原文 UUID 的字符宽度压缩为 0，光标经过引用时不可见原文。如需频繁直接编辑引用，请切换至 `append` 模式。
+- 行内渲染在 `replace` 模式下会把原文 UUID 的字符宽度压缩为 0，光标无法到达引用右侧、也选不中引用。默认的 `activeLine` 模式已避开该问题；若仍需始终隐藏原文，可改用 `append`。
+- 回车 / Shift+Enter 的接管依赖注册全局 `type` 命令与 `Shift+Enter` 快捷键。若其他扩展也注册了这两项，后激活者生效。
 
 ## 5.6 配置参考
 
@@ -943,7 +1022,8 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 | `tineBlockRef.maxOutputChars` | `20000` | 单次输出字符预算 |
 | `tineBlockRef.hideProperties` | `id`, `collapsed` | 渲染时隐藏的属性 |
 | `tineBlockRef.inlineRender.enabled` | `true` | 是否将 `((uuid))` 显示为块标题 |
-| `tineBlockRef.inlineRender.mode` | `replace` | `replace` 隐藏原文 / `append` 追加标题 |
+| `tineBlockRef.inlineRender.mode` | `activeLine` | `activeLine` 光标行显示原文 / `replace` 始终隐藏原文 / `append` 追加标题 |
+| `tineBlockRef.enterSplitBlock` | `true` | 回车拆块、Shift+Enter 块内换行（仅 Tine 图谱内生效） |
 | `tineBlockRef.inlineRender.maxTitleLength` | `60` | 行内标题最大长度 |
 | `tineBlockRef.inlineRender.showMissing` | `true` | 悬空引用显示 `⚠ 块不存在` |
 | `tineBlockRef.render.stripHeadingMarks` | `true` | 渲染时去除标题的 `#` 标记 |

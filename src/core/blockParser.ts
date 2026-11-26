@@ -25,9 +25,13 @@ import type { BlockNode, ParsedFile } from './types';
  *
  * 与 Obsidian 插件实现保持一致：只接受标准 36 位 UUID 形态。
  * 这里要求 UUID 出现在 `id::` 之后，且整行除属性外没有别的内容。
+ *
+ * 键名大小写不敏感：Tine 写入时用小写 `id::`，但手写/导入的数据里
+ * 会出现 `ID::`、`Id::`。若不识别，这些块会被当成「没有 ID」，
+ * 生成功能就会重复插入第二行 `id::`。
  */
 const BLOCK_ID_REGEX =
-	/^\s*id::\s*([a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})\s*$/;
+	/^\s*id::\s*([a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})\s*$/i;
 
 /**
  * 页面属性行（文件开头、非列表、形如 `key:: value`）。
@@ -39,9 +43,26 @@ const PAGE_PROPERTY_REGEX = /^\s*[^-\s].*?::\s*.*$/;
 /**
  * 块属性行（`collapsed::`、`tine.author::` 等）。
  *
- * 只认「字母数字下划线短横 + `::`」，避免把正文里的中文冒号误判成属性。
+ * 键名允许除空白和半角冒号之外的任意字符：
+ * - Tine 会写 `tine.author::`，点号必须支持；
+ * - Logseq 的属性键还可能包含 `/`、`-`、`_`；
+ * - 只认半角 `::`，正文里的中文全角 `：` 不会被误判。
+ *
+ * 早先限定为 `[A-Za-z0-9_-]+`，会把 `tine.author::` 排除在属性组之外，
+ * 导致生成 `id::` 时插到它前面，属性组顺序被打乱。
  */
-const BLOCK_PROPERTY_REGEX = /^\s*[A-Za-z0-9_-]+::(?:\s|$)/;
+const BLOCK_PROPERTY_REGEX = /^\s*[^\s:]+::(?:\s|$)/;
+
+/**
+ * 判断一行是否为块属性行（`key:: value` 形态）。
+ *
+ * 生成块 ID 时，插入点要落在「块首行之后的连续属性组」末尾。
+ * 两边必须用同一套判定，否则解析器认为的属性组和插入计划认为的属性组
+ * 会不一致，导致 `id::` 插到正文之后。
+ */
+export function isBlockPropertyLine(line: string): boolean {
+	return BLOCK_PROPERTY_REGEX.test(line);
+}
 
 export interface ParseOptions {
 	/** 制表位宽度，默认 4。必须与编辑器/Tine 设置一致，否则层级会错。 */

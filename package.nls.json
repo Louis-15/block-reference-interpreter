@@ -13,6 +13,9 @@
   "blockReferenceInterpreter.command.rebuildIndex": "Block Reference: Rebuild Index",
   "blockReferenceInterpreter.command.selectGraphRoot": "Block Reference: Select Tine Graph Directory",
   "blockReferenceInterpreter.command.showLog": "Block Reference: Show Log",
+  "blockReferenceInterpreter.command.copyBlockReference": "Block Reference: Copy Reference to Current Block",
+  "blockReferenceInterpreter.command.copyBlockEmbed": "Block Reference: Copy Embed to Current Block",
+  "blockReferenceInterpreter.command.insertSoftBreak": "Block Reference: Insert Soft Line Break Inside the Block",
 
   "tineBlockRef.language": "Language used by this extension's messages, hovers, panels and tool results. Note: command titles and setting names follow the VS Code display language and cannot be overridden here.",
   "tineBlockRef.language.enum.auto": "Follow the VS Code display language (default)",
@@ -26,7 +29,7 @@
   "tineBlockRef.hoverPreviewLines": "Number of block content lines shown in the hover preview. Fewer lines keep the popup short, so the Expand and Backlinks buttons at the bottom stay visible.",
   "tineBlockRef.hideProperties": "Property names to hide when rendering block content (without the trailing ::).",
   "tineBlockRef.inlineRender.enabled": "Show ((uuid)) inline as the target block's first line, similar to native Tine / Logseq rendering. When disabled, the raw UUID is shown.",
-  "tineBlockRef.inlineRender.mode": "Inline rendering mode. If the cursor misbehaves in replace mode, switch to append.",
+  "tineBlockRef.inlineRender.mode": "How block references are shown inline in the editor. `activeLine` shows the real ((uuid)) on the line your cursor is on and the target title everywhere else; it is the only mode where you can freely place the cursor, select, and edit references.",
   "tineBlockRef.inlineRender.maxTitleLength": "Maximum length of the target block title in inline rendering. Longer titles are truncated with an ellipsis so the line does not grow unbounded.",
   "tineBlockRef.inlineRender.showMissing": "Show \"⚠ Block not found\" inline instead of the raw UUID when the target block is missing, so broken references stand out immediately.",
   "tineBlockRef.render.stripHeadingMarks": "Strip Markdown heading marks (#, ##, ...) from block titles in inline rendering, hover preview and expanded documents. Content returned by AI tools keeps the marks so the model can still read the hierarchy.",
@@ -37,8 +40,10 @@
   "tineBlockRef.backlinks.itemsPerPage": "Maximum references listed per page in the backlinks panel. The remainder is summarised so a heavily referenced block does not produce an endless panel.",
   "tineBlockRef.backlinks.pathDepth": "Number of ancestor levels shown as the breadcrumb for each referencing block. Deeper ancestors are dropped, keeping those closest to the reference.",
 
-  "tineBlockRef.inlineRender.mode.enum.replace": "Hide the raw UUID and show only the target block title (closest to native note-app rendering)",
-  "tineBlockRef.inlineRender.mode.enum.append": "Keep the raw UUID and append 〔target block title〕 after it (more conservative, cursor behaves normally)",
+  "tineBlockRef.inlineRender.mode.enum.activeLine": "Show the target title, but reveal the real ((uuid)) on the line the cursor is on (recommended: fully editable)",
+  "tineBlockRef.inlineRender.mode.enum.replace": "Always hide the raw UUID and show only the target block title (cleanest look, but the cursor can no longer reach the right side of a reference)",
+  "tineBlockRef.inlineRender.mode.enum.append": "Keep the raw UUID and append 〔target block title〕 after it (cursor behaves normally)",
+  "tineBlockRef.enterSplitBlock": "In Tine / Logseq notes, pressing Enter inside a block splits it into two sibling blocks. Turn this off to get the plain VS Code newline behaviour.",
   "tineBlockRef.backlinks.style.enum.inline": "Show a \"🔗 N\" badge at the end of the block line; hover it to list pages that reference the block. Matches Tine (default)",
   "tineBlockRef.backlinks.style.enum.lens": "Show \"N link references\" on a separate line above the block. Use this when VS Code inlay hints are disabled (editor.inlayHints.enabled)",
   "tineBlockRef.backlinks.style.enum.off": "Show no backlink marker in the editor; the commands still work",
@@ -66,5 +71,33 @@
 
   "tineBlockRef_findBacklinks.modelDescription": "Find which notes reference the given block UUID (backlinks).\n\nUse this to answer questions such as \"where is this block referenced\", \"who cites this content\", or \"does this content appear elsewhere\".\n\nReturns, for each referencing location: file, line number, reference type (inline / embed), and the first line of the containing block. The definition location of the UUID is also given; duplicate definitions or a deleted target block are called out explicitly.",
   "tineBlockRef_findBacklinks.blockId.description": "UUID of the target block. A (( )) wrapper is accepted.",
-  "tineBlockRef_findBacklinks.limit.description": "Maximum number of references to return. Defaults to 50, maximum 200."
+  "tineBlockRef_findBacklinks.limit.description": "Maximum number of references to return. Defaults to 50, maximum 200.",
+
+  "tineBlockRef_newId.displayName": "Generate Block IDs",
+  "tineBlockRef_newId.userDescription": "Generate fresh Tine / Logseq block IDs (UUID v4) with the exact id:: line and reference syntax",
+  "tineBlockRef_newId.modelDescription": "Generate one or more fresh persistent block IDs (UUID v4) for Tine / Logseq notes. Returns the exact `id::` property line, an inline reference `((uuid))`, an embed `{{embed ((uuid))}}`, and placement rules. Nothing is written to disk.\n\nUse when: you are creating a new block that will be referenced elsewhere, or you need a UUID before writing `id::` and `((uuid))` yourself. Do not invent UUIDs; always use the values returned by this tool.\n\nImportant: put `id::` immediately after the block's first line, two spaces deeper than the block bullet, before body text and child blocks. If the block's first line is a code fence (for example `- ```js`), put `id::` after the closing fence and before child blocks; Logseq may not recognize it there.",
+  "tineBlockRef_newId.count.description": "How many IDs to generate, 1-20. Defaults to 1.",
+  "tineBlockRef_newId.labels.description": "Optional labels corresponding to each requested ID, so you can map UUIDs back to blocks without mixing them up.",
+
+  "tineBlockRef_findBlocks.displayName": "Find Blocks by Title or Content",
+  "tineBlockRef_findBlocks.userDescription": "Search Tine / Logseq blocks by title or body text and get their file, line, breadcrumb, and UUID",
+  "tineBlockRef_findBlocks.modelDescription": "Search Tine / Logseq blocks by title or body text. Returns candidates with file, 1-based line number, breadcrumb, UUID (or `needs id`), and subtree size. Results include unsaved editor content.\n\nUse when: you need to find an existing block before referencing it. If a candidate has an ID, write `((uuid))` directly. If it has no ID, call `#blockMakeRef` with the candidate's file and line to get a patch. The search matches every whitespace-separated term; set `includeContent: true` to search block bodies, not just the first line.",
+  "tineBlockRef_findBlocks.query.description": "Block title or phrase. Multiple whitespace-separated terms must all match.",
+  "tineBlockRef_findBlocks.filePath.description": "Optional: restrict the search to one note. Absolute path or path relative to the graph root.",
+  "tineBlockRef_findBlocks.limit.description": "Maximum number of candidates. Defaults to 10, maximum 30.",
+  "tineBlockRef_findBlocks.includeContent.description": "Search block bodies (`ownLines`) instead of only the block first line. Defaults to false.",
+
+  "tineBlockRef_makeRef.displayName": "Prepare a Block Reference and Patch",
+  "tineBlockRef_makeRef.userDescription": "Get the UUID, reference text, and a precise patch for adding id:: to a block that has none",
+  "tineBlockRef_makeRef.modelDescription": "Prepare everything needed to reference a specific block: the UUID, the reference text, and a precise `oldText` / `newText` patch (plus a unified diff fallback) for adding `id::` when the block has none.\n\nUse when: `#blockFind` or a file read found the target block but it has no `id::`. Pass the file path, a 1-based line inside the block, and `expectedFirstLine` (the block's first line without `- `) so the tool can verify the target. Apply the returned patch with your own file editing tool, then write the reference, then call `#blockCheck`.\n\nThis tool never writes files. If the block already has an ID, it returns that ID and `existing: true`. If the target is invalid (page-leading implicit block, unclosed code fence, duplicate UUID), it explains why instead of guessing.",
+  "tineBlockRef_makeRef.filePath.description": "Path to the note. Absolute path or path relative to the graph root.",
+  "tineBlockRef_makeRef.line.description": "1-based line number inside the target block. The tool picks the deepest block containing that line.",
+  "tineBlockRef_makeRef.expectedFirstLine.description": "The target block's first line without the leading `- ` (the raw first line is also accepted). Used to verify the target has not changed.",
+  "tineBlockRef_makeRef.kind.description": "Reference form: `inline` for `((uuid))`, `embed` for `{{embed ((uuid))}}`. Defaults to inline.",
+
+  "tineBlockRef_checkRefs.displayName": "Check Block IDs and References",
+  "tineBlockRef_checkRefs.userDescription": "Audit a note for dangling references, duplicate UUIDs, misplaced id:: lines, and malformed references",
+  "tineBlockRef_checkRefs.modelDescription": "Audit a Tine / Logseq note for block ID and reference problems. Reports errors (dangling references, duplicate UUIDs, `id::` after body text, malformed `((...))`) and warnings (v8 runtime-style UUIDs, zero-indent IDs, IDs after a code fence). Nothing is written to disk.\n\nUse when: after writing `id::` or `((uuid))` with your own editing tools, to verify the result before telling the user the note is done.",
+  "tineBlockRef_checkRefs.filePath.description": "Path to the note. Absolute path or path relative to the graph root.",
+  "tineBlockRef_checkRefs.blockIds.description": "Optional: only check references to these UUIDs. ID format/position problems are always checked for the whole file."
 }

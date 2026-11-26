@@ -112,6 +112,12 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 			return undefined;
 		}
 
+		// activeLine 模式下，光标所在行显示真实原文，视觉边界就是原文范围；
+		// 其他行仍按替换文本的宽度算，否则 hover 会整段失灵。
+		const isActiveLineShown =
+			config.inlineRenderMode === 'activeLine' &&
+			vscode.window.activeTextEditor?.selection.active.line === position.line;
+
 		const target = findHoverTarget(
 			lineReferences,
 			position.character,
@@ -155,7 +161,7 @@ export class BlockReferenceHoverProvider implements vscode.HoverProvider {
 				return title;
 			},
 			{
-				enabled: config.inlineRenderEnabled,
+				enabled: config.inlineRenderEnabled && !isActiveLineShown,
 				replaceMode: config.inlineRenderMode !== 'append',
 			},
 		);

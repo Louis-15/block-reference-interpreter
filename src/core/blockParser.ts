@@ -43,15 +43,17 @@ const PAGE_PROPERTY_REGEX = /^\s*[^-\s].*?::\s*.*$/;
 /**
  * 块属性行（`collapsed::`、`tine.author::` 等）。
  *
- * 键名允许除空白和半角冒号之外的任意字符：
- * - Tine 会写 `tine.author::`，点号必须支持；
- * - Logseq 的属性键还可能包含 `/`、`-`、`_`；
- * - 只认半角 `::`，正文里的中文全角 `：` 不会被误判。
+ * 键名限定为 ASCII 标识符字符：字母、数字、`-`、`_`、`.`、`/`。
  *
- * 早先限定为 `[A-Za-z0-9_-]+`，会把 `tine.author::` 排除在属性组之外，
- * 导致生成 `id::` 时插到它前面，属性组顺序被打乱。
+ * 为什么不能放宽到「任意非空白字符」：中文正文里经常出现 `::`
+ * （例如「这是正文，id:: 应插在这里」），放宽后整行会被当成属性行，
+ * 于是 `id::` 被插到正文之后而不是块首行之后——真实验收时已踩到。
+ *
+ * 真实笔记库统计（1266 个 ID、6506 个 collapsed）只出现过 8 种键，
+ * 全部落在该字符集内：`collapsed` / `id` / `tags` / `numbering` /
+ * `title` / `tine/favorites` / `tine.tag-table` / `heading`。
  */
-const BLOCK_PROPERTY_REGEX = /^\s*[^\s:]+::(?:\s|$)/;
+const BLOCK_PROPERTY_REGEX = /^\s*[A-Za-z0-9_./-]+::(?:\s|$)/;
 
 /**
  * 判断一行是否为块属性行（`key:: value` 形态）。

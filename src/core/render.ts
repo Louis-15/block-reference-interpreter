@@ -30,8 +30,13 @@ export interface RenderOptions {
 
 const DEFAULT_HIDDEN_PROPERTIES = ['id', 'collapsed'];
 
-/** 属性行匹配：`key:: value`。 */
-const PROPERTY_LINE_REGEX = /^\s*([A-Za-z0-9_\-]+)::(?:\s|$)/;
+/**
+ * 属性行匹配：`key:: value`。
+ *
+ * 键名与解析器保持一致（ASCII 标识符字符），否则渲染层会隐藏一行
+ * 解析器根本没当成属性的正文。
+ */
+const PROPERTY_LINE_REGEX = /^\s*([A-Za-z0-9_./-]+)::(?:\s|$)/;
 
 /** 判断一行是否为需要隐藏的属性行。 */
 function isHiddenPropertyLine(line: string, hidden: ReadonlySet<string>): boolean {

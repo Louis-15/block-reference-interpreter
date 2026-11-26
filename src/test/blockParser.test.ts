@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { findDeepestBlockAtLine, parseMarkdown, splitLines } from '../core/blockParser';
+import { findDeepestBlockAtLine, isBlockPropertyLine, parseMarkdown, splitLines } from '../core/blockParser';
 import { getBlockTitle } from '../core/render';
 
 const UUID_A = '678bcfae-dea4-4cee-8c7f-ea71ff0b3c0b';
@@ -266,6 +266,24 @@ describe('parseMarkdown 边界情况', () => {
 		const parsed = parseMarkdown('x.md', content);
 		expect(parsed.blocks[0]?.ownLines).toHaveLength(1);
 		expect(parsed.blocks).toHaveLength(2);
+	});
+
+	it('正文里出现 `::` 不会被当成属性行', () => {
+		// 真实验收踩到的坑：正文写着「这是正文，id:: 应插在首行与正文之间」，
+		// 属性键若允许任意非空白字符，整行会被误判成属性，
+		// 于是 id:: 被插到正文之后。
+		const content = ['- 顶级块', '  这是正文，id:: 应插在首行之后。', '  第二行'].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		expect(parsed.blocks[0]?.ownLines).toHaveLength(3);
+		// 属性键判定必须为 false
+		expect(isBlockPropertyLine('  这是正文，id:: 应插在首行之后。')).toBe(false);
+	});
+
+	it('ASCII 属性键（含点号与斜杠）仍然识别', () => {
+		expect(isBlockPropertyLine('  tine.author:: 作者')).toBe(true);
+		expect(isBlockPropertyLine('  tine/favorites:: true')).toBe(true);
+		expect(isBlockPropertyLine('  collapsed:: true')).toBe(true);
+		expect(isBlockPropertyLine('  numbering:: 3')).toBe(true);
 	});
 
 	it('水平线不产生块', () => {

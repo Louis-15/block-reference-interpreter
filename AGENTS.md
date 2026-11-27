@@ -14,10 +14,15 @@ VS Code 扩展「块引用解读工具」：解析 Tine / Logseq 笔记中的 `(
 
 唯一允许写笔记的入口是用户主动执行的 **「块引用：复制当前块的引用 / 嵌入引用」**
 （`src/vscode/blockIdService.ts`）：目标块没有 `id::` 时插入一行 `id::` 并保存文档，
-然后复制引用。AI 自由路径（`#blockMakeRef`）只返回补丁文本，由 AI 用自己的编辑工具
-落盘，因此仍保留 Copilot 的接受/拒绝栏。
+然后复制引用。
+
+AI 自由路径（`#blockMakeRef`、`#blockLink`）**只返回补丁文本**，由 AI 用自己的编辑工具
+落盘。这不是为了保守，而是因为 **Copilot 的「接受 / 拒绝」栏只覆盖 AI 的编辑工具**：
+工具私自写文件不会出现在那里，用户想撤销只能 Ctrl+Z 或查 git diff，事后根本分不清
+哪次改动是 AI 干的。把落盘交给编辑工具，用户点一下「不接受」就能全撤。
 
 不要在任何文档里写「全程只读，绝不修改任何笔记」这种绝对表述——它与上述命令冲突。
+也不要为了「更快」把写盘搬进工具：省下的是几次工具往返，赔上的是用户的撤销能力。
 
 用户的真实笔记库 `d:\扁舟听雨工作室\网文创作理论` 只作为验证对象，
 不是项目代码，改动它等于破坏用户数据。冒烟测试只读不写。
@@ -42,10 +47,32 @@ VS Code 宿主。往 core 里塞 `vscode` 依赖会一次性摧毁这个能力�
 把判断需要的信息作为参数传进来，而不是 import。
 
 **回车 / 块内换行**也遵守这条边界：判断逻辑在 `src/core/blockSplit.ts`（纯函数），
-`src/vscode/enterBehavior.ts` 只负责拦截按键、执行编辑。新增按键行为时先写 core
+`src/vscode/enterBehavior.ts` 只负责接收命令、执行编辑。新增按键行为时先写 core
 计划函数与单测，再在适配层接线。
 
+**不要拦截全局 `type` 命令来实现按键行为。** `type` 是全局命令，触发时不带
+「哪个控件按的键」这一信息，而 `window.activeTextEditor` 只反映最后获得焦点的
+文本编辑器。光标在 Copilot 聊天输入框里按回车时，聊天框派发 `type`，但
+`activeTextEditor` 仍指向中间的 Markdown 文档，换行就被写进了笔记（实测造成
+十几行空块）。正确做法是注册独立命令 + 在 `package.json` 的 `keybindings` 里用
+`editorTextFocus` 限定作用域；条件不满足时回退 `default:type` 保留原生行为。
+
 构建用 esbuild 打成单文件 CJS，`vscode` 保持 external（宿主提供）。
+
+**工具设计以「往返次数」为第一指标。** 每次工具调用对模型都是一轮完整响应，
+真实耗时远大于工具本身的执行时间。所以：能一次算完的不要拆成两次，
+但也不要为了合并而在一个工具里塞进互相独立的职责。
+
+由此产生两个约定：
+
+- **`#blockLink` 是引用任务的默认入口**。它把「定位 → 生成 UUID → 算 `id::` 补丁
+  → 算引用落点补丁」压成一次调用。拆分版（`#blockFind` + `#blockMakeRef` +
+  手写引用）只保留给「只想补 ID、不写落点」这类单一需求。
+- **寻找结构不要靠模型扫文件**。`#blockFind` 的 `headingsOnly` + `headingLevel`
+  就是为此存在；模型用终端 grep 或 powershell 扫全库，既慢又容易漏。
+
+反过来，工具**不**替模型做需要判断的事：引用写在哪一段、用不用 embed、
+说明文字写什么，都必须由调用方传参。工具只消除机械步骤和格式风险。
 
 ## 验证
 
@@ -58,6 +85,10 @@ VS Code 宿主。往 core 里塞 `vscode` 依赖会一次性摧毁这个能力�
 
 新增行为时补几条聚焦用例，放进对应的既有 `*.test.ts`。这些测试断言的是
 「真实笔记库上仍然可读且层级正确」，不是实现细节。
+
+**临时验证脚本放 `d:/Projects/Intermediate Products`，不要放进仓库。**
+需要拿真实库跑一次性验证（例如演算插入计划、对比补丁）时，用 esbuild 把
+一个 `.ts` 探针打包成 CJS 再 `node` 执行，跑完删目录。探针只读，不许写笔记库。
 
 `docs/PLAN.md` 记录着里程碑与开发期的完整踩坑经过，但它在 `.gitignore` 里，
 只有本机存在。新克隆的仓库没有这份文件。
@@ -140,20 +171,60 @@ Webview，代价是失去 Ctrl+F 与自由复制。
 调用方若显式传了别的 `indentUnit`，换算处要同步改，写死除数会错位。
 
 **工具名有两套。** `registerTool` 用 `tineBlockRef_readBlock` 这类内部名，
-模型与用户看到的是 `blockRef` / `blockNote` / `blockBacklinks`。写指令、写文档、
+模型与用户看到的是 `blockRef` / `blockNote` / `blockBacklinks` / `blockNewId` /
+`blockFind` / `blockLink` / `blockMakeRef` / `blockCheck`。写指令、写文档、
 让 AI 引用时用后者，前者只在源码里出现。
+
+**块引用前面必须有空白，这是 Tine / Logseq 的原生规则。** 只识别「行首」或
+「空白之后」的 `((uuid))` 与 `{{embed`，`参考：((uuid))` 这种紧贴前文的写法在
+本扩展里能扫到（所以 VS Code 里看着正常），粘回 Tine 却是死链。审计用
+`reference-tight-prefix` 警告覆盖它。
+
+判定时有个坑：正则只从内层 `((` 开始匹配，而 `{{embed ((uuid))}}` 的内层前面
+永远是空格，直接看 `((` 前一个字符会漏判。必须先回退到 `{{` 的位置再判
+（`refAuditScan.ts` 里的 `macro` 匹配）。生成侧则由 `buildRefBlockPlan` 在代码里
+保证空格，不依赖模型手写。
+
+**排除块外引用时不要用块下标当 key。** 反链合并曾用 `blockIndex` 作 key，
+块外引用全是 -1，于是几十条被合并成「同块内重复引用 N 次」。必须区分
+`block:{i}` 与 `line:{n}`。
+
+**属性键的字符集必须收紧。** `[^\s:]+` 会把中文正文里的 `::` 当成属性行，
+`id::` 就被插到正文后面去了。正确的是 `[A-Za-z0-9_./-]+`（真实库只有
+`collapsed` / `id` / `tags` / `numbering` / `title` / `tine/*` / `heading` 等 ASCII 键）。
+`refAuditScan.ts` 与 `render.ts` 里的属性正则必须与 `blockParser.ts` 保持一致，
+否则会出现「解析器不认为是属性，渲染层却把该行隐藏了」的不一致。
 
 ## 体量
 
-`src/vscode/indexService.ts`（685 行）与 `src/core/backlinkReport.ts`（623 行）
-已超过 600 行红线，`src/core/backlinkHtml.ts`（424 行）接近 400 行警戒线。
+`src/vscode/indexService.ts`（711 行）已超过 600 行红线；
+`src/core/backlinkHtml.ts`（452 行）超过 400 行警戒线，`src/core/blockParser.ts`（395 行）
+与 `src/vscode/inlineRenderer.ts`（394 行）就在线上。
 新功能另开文件；要往这几个文件里加逻辑时，先提出拆分方案再动手。
 拆分时同步拆对应的 `src/test/*.test.ts`，保持覆盖率不变。
+
+`backlinkReport.ts` 曾经是 670 行，已按「类型 / 文本 / 渲染」拆成
+`backlinkReport.ts` + `backlinkReportTypes.ts` + `backlinkReportText.ts` +
+`backlinkReportRender.ts`，对应测试也从单个 532 行的文件拆成
+`backlinkReport.test.ts` + `backlinkReportRender.test.ts` + `backlinkReportFixture.ts`。
+这次拆分可以作为后续拆分的模板：先按职责切成纯函数模块，再让原文件只保留编排。
 
 ## 会被打进扩展包的东西
 
 `.vscodeignore` 决定包内内容。`templates/github/instructions/` 里的指令模板必须
 随包分发（用户在笔记库中引用它），`.github/`、`src/`、`docs/` 与测试不进包。
+
 `notebook-instructions.zip` 不入库也不进包，由工作流在发布时从 `templates/`
 现场生成——压缩包内必须是 `.github/instructions/文件名` 三层，多一层会让用户
-解压后指令不生效。
+解压后指令不生效。**本地那份 zip 会被 gitignore，容易忘记更新**：曾出现模板已改、
+本地 zip 仍是两个版本前的情况，用户解压后拿到的是旧规则。
+
+**指令文件装在用户笔记库里，扩展升级不会更新它。** 改了模板必须提醒用户重新
+解压覆盖；判断依据是文件里有没有最新章节标题。这条要写进 CHANGELOG 与
+README 的升级说明，否则用户会以为「装了新版本但 AI 不会用」是插件坏了。
+
+模板内容有三条硬性要求，改动时不能丢：
+
+1. frontmatter 的 `description` 必须同时覆盖「读」和「写」，否则 AI 写笔记时匹配不到该指令；
+2. 必须写明 `((` / `{{embed` 前面要有空格，且要给出正误对照；
+3. 必须写明「最短路径」：禁止用终端读文件、禁止反复回读验证、整篇只跑一次 `#blockCheck`。

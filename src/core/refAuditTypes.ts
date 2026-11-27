@@ -13,6 +13,8 @@ export type RefAuditCode =
 	| 'malformed-reference'
 	/** 引用不在任何块内（顶格裸引用行），Tine / Logseq 不会把它当成块内引用。 */
 	| 'reference-outside-block'
+	/** 引用紧贴前文（前面没有空格），Tine / Logseq 不会把它渲染成引用。 */
+	| 'reference-tight-prefix'
 	| 'multiple-ids'
 	| 'invalid-id'
 	| 'id-not-in-property-group'

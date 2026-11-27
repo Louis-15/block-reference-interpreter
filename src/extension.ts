@@ -36,6 +36,7 @@ import { ReadNoteTool } from './vscode/tools/readNoteTool';
 import { CheckRefsTool } from './vscode/tools/checkRefsTool';
 import { FindBlocksTool } from './vscode/tools/findBlocksTool';
 import { MakeRefTool } from './vscode/tools/makeRefTool';
+import { LinkTool } from './vscode/tools/linkTool';
 import { NewIdTool } from './vscode/tools/newIdTool';
 
 /** 输出通道名由 t() 提供，跟随 `tineBlockRef.language` 设置。 */
@@ -352,13 +353,17 @@ function registerLanguageModelTools(
 				new MakeRefTool(getIndex, ensureReady, getGraphRoot),
 			),
 			vscode.lm.registerTool(
+				'tineBlockRef_link',
+				new LinkTool(getIndex, ensureReady, getGraphRoot),
+			),
+			vscode.lm.registerTool(
 				'tineBlockRef_checkRefs',
 				new CheckRefsTool(getIndex, ensureReady, getGraphRoot),
 			),
 		);
 		log(
 			t(
-				'[Tools] Registered 7 AI tools: readBlock / readNote / findBacklinks / newId / findBlocks / makeRef / checkRefs',
+				'[Tools] Registered 8 AI tools: readBlock / readNote / findBacklinks / newId / findBlocks / makeRef / link / checkRefs',
 			),
 		);
 	} catch (error) {

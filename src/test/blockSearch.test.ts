@@ -145,3 +145,67 @@ describe('searchBlocks 实时文本覆盖', () => {
 		});
 	});
 });
+
+describe('searchBlocks 结构枚举', () => {
+	const OUTLINE = [
+		'- # 11 行为模式概括',
+		'\t- ## 11.1 适用阶段',
+		'\t\t- ### 11.1.1 细节',
+		'- 普通块，不是标题',
+		'- # 12 收到情感表达',
+		`  id:: ${UUID}`,
+		'\t- ## 12.1 子标题',
+		'- #标签 不是标题',
+	].join('\n');
+
+	it('headingsOnly 只返回标题块，并按文件顺序排列', () => {
+		const index = buildIndex({ 'pages/a.md': OUTLINE });
+		const results = searchBlocks(index, {
+			query: '',
+			filePath: 'pages/a.md',
+			headingsOnly: true,
+			limit: 50,
+		});
+
+		expect(results.map((item) => item.title)).toEqual([
+			'# 11 行为模式概括',
+			'## 11.1 适用阶段',
+			'### 11.1.1 细节',
+			'# 12 收到情感表达',
+			'## 12.1 子标题',
+		]);
+	});
+
+	it('headingLevel 只保留指定层级', () => {
+		const index = buildIndex({ 'pages/a.md': OUTLINE });
+		const results = searchBlocks(index, {
+			query: '',
+			filePath: 'pages/a.md',
+			headingsOnly: true,
+			headingLevel: 1,
+			limit: 50,
+		});
+
+		// `#标签` 没有空格分隔，不应被当成一级标题
+		expect(results.map((item) => item.title)).toEqual(['# 11 行为模式概括', '# 12 收到情感表达']);
+	});
+
+	it('枚举模式保留 UUID 信息，便于直接引用', () => {
+		const index = buildIndex({ 'pages/a.md': OUTLINE });
+		const results = searchBlocks(index, {
+			query: '',
+			filePath: 'pages/a.md',
+			headingsOnly: true,
+			headingLevel: 1,
+		});
+
+		expect(results[1]).toMatchObject({ uuid: UUID, needsId: false });
+		expect(results[0]).toMatchObject({ uuid: undefined, needsId: true });
+	});
+
+	it('没有 filePath 的空查询直接返回空，不会把全库倒出来', () => {
+		const index = buildIndex({ 'pages/a.md': OUTLINE });
+		expect(searchBlocks(index, { query: '', headingsOnly: true })).toEqual([]);
+	});
+});
+

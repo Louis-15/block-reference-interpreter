@@ -99,6 +99,46 @@ describe('引用目标检查', () => {
 		);
 		expect(result.warnings.some((issue) => issue.code === 'block-end-id')).toBe(true);
 	});
+
+	it('引用紧贴前文时告警（Tine / Logseq 不渲染）', () => {
+		// 复现真实故障：`参考：((uuid))` 在 VS Code 里看着正常，粘回 Tine 却是死链。
+		const { result } = audit([`- 目标`, `  id:: ${UUID_A}`, `- 参考：((${UUID_A}))`].join('\n'));
+		const tight = result.warnings.filter((issue) => issue.code === 'reference-tight-prefix');
+		expect(tight).toHaveLength(1);
+		expect(tight[0]?.line).toBe(2);
+		// 只是写法问题，不影响「通过」判定
+		expect(result.ok).toBe(true);
+	});
+
+	it('行首或空白之后的引用不告警', () => {
+		const content = [
+			`- 目标`,
+			`  id:: ${UUID_A}`,
+			`- ((${UUID_A}))`,
+			`- 参考 ((${UUID_A}))`,
+			`- 嵌入 {{embed ((${UUID_A}))}}`,
+		].join('\n');
+		const { result } = audit(content);
+		expect(result.warnings.some((issue) => issue.code === 'reference-tight-prefix')).toBe(false);
+	});
+
+	it('嵌入引用紧贴前文时同样告警（`{{` 也要前置空格）', () => {
+		const { result } = audit(
+			[`- 目标`, `  id:: ${UUID_A}`, `- 参考：{{embed ((${UUID_A}))}}`].join('\n'),
+		);
+		expect(result.warnings.some((issue) => issue.code === 'reference-tight-prefix')).toBe(true);
+	});
+
+	it('嵌入引用在空白之后不告警', () => {
+		const content = [
+			`- 目标`,
+			`  id:: ${UUID_A}`,
+			`- 参考 {{embed ((${UUID_A}))}}`,
+			`- {{embed ((${UUID_A}))}}`,
+		].join('\n');
+		const { result } = audit(content);
+		expect(result.warnings.some((issue) => issue.code === 'reference-tight-prefix')).toBe(false);
+	});
 });
 
 describe('块 ID 检查', () => {

@@ -165,6 +165,27 @@ export function auditReferences(
 		}
 
 		result.referenceCount++;
+
+		/*
+		 * 引用紧贴前文：Tine / Logseq 只把「行首，或空白之后」的 `((uuid))` 当成引用。
+		 * `参考：((uuid))` 这种写法在本扩展里能扫到（所以 VS Code 里看着没毛病），
+		 * 但粘回 Tine 会退化成普通文本 —— 这正是最容易被忽略的一类坏引用。
+		 * 属于语法层面的问题，与引用目标无关，因此不受 blockIds 过滤影响。
+		 */
+		if (reference.tightPrefix) {
+			result.warnings.push({
+				severity: 'warning',
+				code: 'reference-tight-prefix',
+				message: t(
+					'Line {0}: the block reference `(({1}))` is not preceded by whitespace. Tine / Logseq only recognize a reference at the start of a line or right after a space (`{{embed ...}}` included), so this one will not render. Insert a space before it.',
+					reference.line + 1,
+					canonical,
+				),
+				line: reference.line,
+				uuid: canonical,
+			});
+		}
+
 		if (filter && !filter.has(canonical)) {
 			continue;
 		}

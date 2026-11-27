@@ -19,6 +19,14 @@ export interface StrictReference {
 	value: string;
 	/** 前后多包了一层括号，例如 `(((uuid)))`。 */
 	wrapped: boolean;
+	/**
+	 * `((` 前面紧跟非空白字符（含行内紧邻文字、中文标点等）。
+	 *
+	 * Tine / Logseq 的原生规则是「行首，或空白之后的 `((uuid))` 才算块引用」。
+	 * 紧贴前文的写法在本扩展里仍能扫描到，但粘回 Tine 会退化成普通文本，
+	 * 所以必须单独标出来提示补一个空格。
+	 */
+	tightPrefix: boolean;
 }
 
 /**
@@ -93,6 +101,18 @@ export function scanStrictReferences(lines: readonly string[], tabSize: number):
 			const value = (match[1] ?? match[2] ?? '').trim();
 			const before = line[match.index - 1];
 			const after = line[match.index + match[0].length];
+
+			/*
+			 * 空白规则要追溯到宏的起点。
+			 *
+			 * `{{embed ((uuid))}}` 同样要求 `{{` 前面是行首或空白，但本正则只从内层
+			 * `((` 开始匹配，直接看 `((` 前一个字符会漏判（内层前面永远是空格）。
+			 * 因此先看看 `((` 前面是不是 `{{` / `{{embed` 开头，是的话把判定位置挪到 `{{`。
+			 */
+			const macro = /\{\{\s*embed\s*$/i.exec(line.slice(0, match.index));
+			const prefixIndex = macro ? match.index - macro[0].length : match.index;
+			const prefixChar = prefixIndex > 0 ? line[prefixIndex - 1] : undefined;
+
 			references.push({
 				line: lineNumber,
 				column: match.index,
@@ -100,6 +120,8 @@ export function scanStrictReferences(lines: readonly string[], tabSize: number):
 				value,
 				wrapped:
 					before === '(' || before === '（' || after === ')' || after === '）',
+				// `prefixChar` 为 undefined 表示整行以引用开头，属于合法写法。
+				tightPrefix: prefixChar !== undefined && !/\s/.test(prefixChar),
 			});
 		}
 	}

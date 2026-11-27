@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "%blockReferenceInterpreter.displayName%",
   "description": "%blockReferenceInterpreter.description%",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "publisher": "louis-15",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -191,11 +191,16 @@
             "includeContent": {
               "type": "boolean",
               "description": "%tineBlockRef_findBlocks.includeContent.description%"
+            },
+            "headingsOnly": {
+              "type": "boolean",
+              "description": "%tineBlockRef_findBlocks.headingsOnly.description%"
+            },
+            "headingLevel": {
+              "type": "number",
+              "description": "%tineBlockRef_findBlocks.headingLevel.description%"
             }
-          },
-          "required": [
-            "query"
-          ]
+          }
         }
       },
       {
@@ -234,6 +239,90 @@
             "filePath",
             "line",
             "expectedFirstLine"
+          ]
+        }
+      },
+      {
+        "name": "tineBlockRef_link",
+        "displayName": "%tineBlockRef_link.displayName%",
+        "userDescription": "%tineBlockRef_link.userDescription%",
+        "modelDescription": "%tineBlockRef_link.modelDescription%",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "blockLink",
+        "icon": "$(link)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "%tineBlockRef_link.filePath.description%"
+            },
+            "destination": {
+              "type": "object",
+              "description": "%tineBlockRef_link.destination.description%",
+              "properties": {
+                "filePath": {
+                  "type": "string",
+                  "description": "%tineBlockRef_link.destination.filePath.description%"
+                },
+                "line": {
+                  "type": "number",
+                  "description": "%tineBlockRef_link.destination.line.description%"
+                },
+                "expectedFirstLine": {
+                  "type": "string",
+                  "description": "%tineBlockRef_link.destination.expectedFirstLine.description%"
+                },
+                "position": {
+                  "type": "string",
+                  "enum": ["child", "sibling"],
+                  "description": "%tineBlockRef_link.destination.position.description%"
+                }
+              },
+              "required": [
+                "filePath",
+                "line",
+                "expectedFirstLine"
+              ]
+            },
+            "targets": {
+              "type": "array",
+              "description": "%tineBlockRef_link.targets.description%",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "filePath": {
+                    "type": "string",
+                    "description": "%tineBlockRef_link.targets.filePath.description%"
+                  },
+                  "line": {
+                    "type": "number",
+                    "description": "%tineBlockRef_link.targets.line.description%"
+                  },
+                  "expectedFirstLine": {
+                    "type": "string",
+                    "description": "%tineBlockRef_link.targets.expectedFirstLine.description%"
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "%tineBlockRef_link.targets.label.description%"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": ["inline", "embed"],
+                    "description": "%tineBlockRef_link.targets.kind.description%"
+                  }
+                },
+                "required": [
+                  "line",
+                  "expectedFirstLine"
+                ]
+              }
+            }
+          },
+          "required": [
+            "destination",
+            "targets"
           ]
         }
       },
@@ -314,13 +403,22 @@
       {
         "command": "blockReferenceInterpreter.insertSoftBreak",
         "title": "%blockReferenceInterpreter.command.insertSoftBreak%"
+      },
+      {
+        "command": "blockReferenceInterpreter.enterInBlock",
+        "title": "%blockReferenceInterpreter.command.enterInBlock%"
       }
     ],
     "keybindings": [
       {
+        "command": "blockReferenceInterpreter.enterInBlock",
+        "key": "enter",
+        "when": "editorTextFocus && editorLangId == markdown && !editorReadonly && !editorHasSelection && !editorHasMultipleSelections && !suggestWidgetVisible && !inSnippetMode && !inlineSuggestionVisible"
+      },
+      {
         "command": "blockReferenceInterpreter.insertSoftBreak",
         "key": "shift+enter",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "editorTextFocus && editorLangId == markdown && !editorHasSelection && !suggestWidgetVisible && !inSnippetMode"
       }
     ],
     "menus": {

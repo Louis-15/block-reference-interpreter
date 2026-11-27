@@ -18,7 +18,14 @@ import type { BlockNode, ParsedFile } from './types';
 
 /** 搜索选项。 */
 export interface BlockSearchOptions {
-	/** 查询词；空格分隔多个词，全部命中才算匹配。 */
+	/**
+	 * 查询词；空格分隔多个词，全部命中才算匹配。
+	 *
+	 * 允许为空，但有前提：必须同时给出 `filePath`。空查询的含义是
+	 * 「不按关键词过滤，直接列举该文件的块」，配合 `headingsOnly` 就能
+	 * 一次拿到「某篇笔记的所有一级标题」，省掉让模型扫全文件的往返。
+	 * 没有 `filePath` 的空查询会退化成「把全库块都吐出来」，直接拒绝。
+	 */
 	query: string;
 	/** 只搜索指定文件；不传则全库。 */
 	filePath?: string;
@@ -26,6 +33,10 @@ export interface BlockSearchOptions {
 	limit?: number;
 	/** 是否匹配块自身全部内容（`ownLines`），默认只匹配块首行。 */
 	includeContent?: boolean;
+	/** 只返回首行是 Markdown 标题的块（`# `、`## ` …）。 */
+	headingsOnly?: boolean;
+	/** 配合 `headingsOnly`：只要某一层级的标题（1 = `#`，2 = `##` …）。 */
+	headingLevel?: number;
 	/** 面包屑最多保留几级祖先，默认 3。 */
 	pathDepth?: number;
 	/** 用实时解析结果覆盖索引中的同名文件（通常是当前打开的文档）。 */
@@ -102,6 +113,10 @@ function findAnyId(block: BlockNode): string | undefined {
 
 /** 评分：完全相等 > 前缀 > 包含；内容命中分值更低。 */
 function scoreCandidate(titleLower: string, allInTitle: boolean, allInContent: boolean, terms: string[]): number {
+	if (terms.length === 0) {
+		// 空查询（列举模式）不参与相关度排序，保持文件内行号顺序即可。
+		return 0;
+	}
 	const joined = terms.join(' ');
 	if (allInTitle) {
 		if (titleLower.trim() === joined) {
@@ -119,6 +134,22 @@ function scoreCandidate(titleLower: string, allInTitle: boolean, allInContent: b
 }
 
 /**
+ * 判断块首行正文是不是 Markdown 标题。
+ *
+ * `#` 后面必须跟空白：Logseq 的 `#标签` 没有空格，不能算标题，
+ * 否则 `headingsOnly` 会把一堆打标签的块也算进来。
+ */
+export function isHeadingTitle(title: string): boolean {
+	return headingLevelOf(title) > 0;
+}
+
+/** 取标题层级（1–6）；不是标题返回 0。 */
+export function headingLevelOf(title: string): number {
+	const match = /^(#{1,6})\s/.exec(title.trim());
+	return match?.[1]?.length ?? 0;
+}
+
+/**
  * 搜索块。
  *
  * 匹配规则：
@@ -128,11 +159,12 @@ function scoreCandidate(titleLower: string, allInTitle: boolean, allInContent: b
  */
 export function searchBlocks(index: GraphIndex, options: BlockSearchOptions): BlockSearchCandidate[] {
 	const terms = splitTerms(options.query);
-	if (terms.length === 0) {
+	// 空查询只在「列举指定文件」时才有意义；否则会把全库块都吐出来，直接拒绝。
+	if (terms.length === 0 && !options.filePath) {
 		return [];
 	}
 
-	const limit = Math.max(1, Math.min(options.limit ?? 10, 30));
+	const limit = Math.max(1, Math.min(options.limit ?? 10, 200));
 	const paths = options.filePath
 		? [options.filePath]
 		: [...new Set([...index.listFiles(), ...(options.overrides?.keys() ?? [])])];
@@ -153,11 +185,29 @@ export function searchBlocks(index: GraphIndex, options: BlockSearchOptions): Bl
 
 			const title = getBlockTitle(block.ownLines[0] ?? '');
 			const titleLower = title.toLowerCase();
-			const allInTitle = terms.every((term) => titleLower.includes(term));
 
-			const contentText = options.includeContent ? block.ownLines.join('\n').toLowerCase() : '';
+			// 标题过滤放在关键词匹配之前：列举标题时绝大多数块都会被跳过。
+			if (options.headingsOnly === true) {
+				const level = headingLevelOf(title);
+				if (level === 0) {
+					continue;
+				}
+				if (options.headingLevel !== undefined && level !== options.headingLevel) {
+					continue;
+				}
+			}
+
+			const allInTitle =
+				terms.length === 0 || terms.every((term) => titleLower.includes(term));
+
+			const contentText =
+				options.includeContent === true && terms.length > 0
+					? block.ownLines.join('\n').toLowerCase()
+					: '';
 			const allInContent =
-				options.includeContent === true && terms.every((term) => contentText.includes(term));
+				terms.length > 0 &&
+				options.includeContent === true &&
+				terms.every((term) => contentText.includes(term));
 
 			if (!allInTitle && !allInContent) {
 				continue;

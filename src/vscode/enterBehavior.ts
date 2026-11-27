@@ -1,14 +1,19 @@
 /**
  * 回车 / 块内换行：让 VS Code 的编辑手感对齐 Tine / Logseq。
  *
- * 两个入口：
- * - 回车：拦截全局 `type` 命令里的换行字符；
- * - Shift+Enter：注册独立命令，并在 package.json 里绑定快捷键。
+ * 两个入口，都通过快捷键触发：
+ * - 回车：`blockReferenceInterpreter.enterInBlock`，`when` 里限定 `editorTextFocus`；
+ * - Shift+Enter：`blockReferenceInterpreter.insertSoftBreak`。
  *
- * 为什么必须拦截 `type`：VS Code 没有「编辑器按键事件」API，
- * `type` 是唯一能在字符真正插入文档前插手的地方。拦截时必须保证：
- * - 判断是同步的（解析结果按文档版本缓存），否则输入会明显延迟；
- * - 任何不满足条件的情况都立刻回退到默认行为，绝不吞掉普通输入。
+ * **为什么不再拦截全局 `type` 命令**：
+ * `type` 是全局命令，触发时不带「是哪个控件按的键」这一信息，而
+ * `window.activeTextEditor` 只反映「最后获得焦点的文本编辑器」。当光标在
+ * Copilot 聊天输入框里按回车时，聊天输入框会派发 `type`，但 activeTextEditor
+ * 仍指向中间那个 Markdown 文档 —— 于是换行被写进了笔记（实测造成十几行空块）。
+ *
+ * 改用快捷键后，`editorTextFocus` 只有在真正的文本编辑器获得焦点时才为真，
+ * 聊天框、搜索框的回车天然不会进来。条件不满足时回退到 `default:type`，
+ * 原生行为（列表续行、onEnterRules 等）完全保留。
  */
 
 import * as vscode from 'vscode';
@@ -21,6 +26,9 @@ import { readConfig } from './indexService';
 
 /** Shift+Enter 命令 ID；package.json 的 keybindings 必须与之一致。 */
 export const SOFT_BREAK_COMMAND = 'blockReferenceInterpreter.insertSoftBreak';
+
+/** 回车命令 ID；package.json 的 keybindings 必须与之一致。 */
+export const ENTER_COMMAND = 'blockReferenceInterpreter.enterInBlock';
 
 /** 依赖：只需要知道文件是否在索引范围内，以及日志出口。 */
 export interface EnterBehaviorDeps {
@@ -73,11 +81,12 @@ export function registerEnterBehavior(deps: EnterBehaviorDeps): vscode.Disposabl
 		return deps.isIndexedFile(document.uri.fsPath);
 	};
 
-	const typeCommand = vscode.commands.registerCommand('type', async (args: { text?: string }) => {
-		if (args?.text === '\n' && tryEnterBlock(getParsed, shouldHandle, deps)) {
-			return;
+	const enterCommand = vscode.commands.registerCommand(ENTER_COMMAND, async () => {
+		if (!tryEnterBlock(getParsed, shouldHandle, deps)) {
+			// 不是 Tine 笔记、或当前上下文不该接管时，恢复 VS Code 原生回车。
+			// `default:type` 会绕过拦截器，仍然走 onEnterRules（列表续行、引用续行等）。
+			await vscode.commands.executeCommand('default:type', { text: '\n' });
 		}
-		await vscode.commands.executeCommand('default:type', args);
 	});
 
 	const softBreakCommand = vscode.commands.registerCommand(SOFT_BREAK_COMMAND, async () => {
@@ -90,7 +99,7 @@ export function registerEnterBehavior(deps: EnterBehaviorDeps): vscode.Disposabl
 	return {
 		dispose(): void {
 			cache.clear();
-			typeCommand.dispose();
+			enterCommand.dispose();
 			softBreakCommand.dispose();
 		},
 	};

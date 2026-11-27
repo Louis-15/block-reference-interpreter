@@ -46,13 +46,16 @@ VS Code also lacks **backlinks** — where a block is referenced from. Tine and 
 
 All four behave identically in inline rendering, hover preview, AI tools and expanded views. Inline rendering replaces the **entire expression**, including the `{{embed ...}}` wrapper, so no `{{embed Title}}` residue is left behind.
 
+**Leading space is mandatory.** Tine / Logseq only recognize a reference at the start of a line or **right after whitespace**. `参考：((uuid))` — glued to the preceding text or a full-width colon — still parses in this extension (so it looks fine in VS Code) but degrades to plain text once pasted back into Tine. The same applies to the `{{` of `{{embed`. `#blockCheck` reports this as a `reference-tight-prefix` warning, and `#blockLink` inserts the space for you.
+
 ### 1.4 Feature overview
 
 | Feature | Description |
 |---|---|
 | Index | Background scan of `pages/` and `journals/`, building UUID → block and UUID → reference maps in memory. Built and maintained automatically as soon as a vault is opened |
-| AI tools (7) | Read blocks, whole notes and backlinks; generate new block IDs, find blocks, prepare reference patches, and audit references |
-| Block reference generation | AI writes valid `id::` and `((uuid))` via `#blockNewId`, `#blockFind`, `#blockMakeRef` and `#blockCheck`; you can also right-click and copy a reference or embed in one step |
+| AI tools (8) | Read blocks, whole notes and backlinks; generate new block IDs, find blocks and outlines, link blocks in one call, prepare reference patches, and audit references |
+| Block reference generation | AI writes valid `id::` and `((uuid))` via `#blockNewId`, `#blockFind`, `#blockLink`, `#blockMakeRef` and `#blockCheck`; you can also right-click and copy a reference or embed in one step |
+| One-call linking | `#blockLink` adds any missing `id::`, computes indentation and level, and guarantees the leading space — the whole `find → makeRef → write` chain collapses into one call plus one audit |
 | Inline rendering | Shows `((uuid))` as the target block's title, and reveals the real UUID on the line your cursor is on so it stays fully editable |
 | Enter and soft line breaks | Enter splits blocks (empty blocks keep producing empty blocks); Shift+Enter inserts a soft line break inside a block, matching Tine / Logseq |
 | Hover preview | Shows the target block and all of its children |
@@ -139,13 +142,45 @@ Work through these six checks in order.
 | `#blockNote` | Read a whole note with every block reference expanded |
 | `#blockBacklinks` | Find where a block is referenced |
 | `#blockNewId` | Generate fresh Tine / Logseq block IDs (UUID v4) with the exact `id::` line and reference text |
-| `#blockFind` | Search blocks by title or body, returning file, line, breadcrumb, and UUID |
+| `#blockFind` | Search blocks by title or body; also lists a note's outline in one call (`filePath` + `headingsOnly` + `headingLevel`) |
+| `#blockLink` | Link one or more existing blocks into a note in a single call: adds missing `id::`, computes the exact reference blocks and returns every patch at once |
 | `#blockMakeRef` | Produce a precise patch (`oldText` / `newText` plus unified diff) for a block without `id::` |
-| `#blockCheck` | Audit `id::` placement, dangling references, duplicate UUIDs, and malformed references |
+| `#blockCheck` | Audit `id::` placement, dangling references, duplicate UUIDs, malformed references, and references with no preceding space |
 
-Reading and auditing tools are memory-only. `#blockMakeRef` returns text; the AI applies it with its own editing tool, which keeps Copilot's accept/reject step in the loop.
+Reading and auditing tools are memory-only. `#blockLink` and `#blockMakeRef` return text; the AI applies it with its own editing tool, which keeps Copilot's accept/reject step in the loop.
+
+`#blockLink` is the fast path: the whole `find → makeRef → write reference` chain collapses into one call (plus one `#blockCheck`). A typical "reference two blocks" task finishes in four tool calls, and the leading space that Tine / Logseq require before `((uuid))` is inserted by the tool, so it cannot be forgotten.
 
 `#blockNote` has three modes: `list` (just the reference list — several KB, prefer it when there are many references), `expand` (default, full expansion), and `both`. Beyond eight references `expand` attaches the list automatically and reports any lines that exceeded the output budget.
+
+#### Listing a note's structure
+
+To reference "the second level-2 heading of a note", do not scan the file with a terminal. One call:
+
+```text
+#blockFind { filePath: "pages/note.md", headingsOnly: true, headingLevel: 2, limit: 200 }
+```
+
+Returns a numbered, single-line-per-hit outline in file order. Levels 1–6 all work; omit `headingLevel` to get every level. Leave `query` empty to skip keyword filtering — `filePath` is then required, since an empty query across the whole vault would dump every block.
+
+```text
+1. pages/note.md:5    # 11 Overview          no id
+2. pages/note.md:53   # 12 Details           id: 68010957-…
+```
+
+#### Linking blocks in one call
+
+```text
+#blockLink {
+  destination: { filePath: "pages/my-note.md", line: 6, expectedFirstLine: "References" },
+  targets: [
+    { filePath: "pages/note.md", line: 5,   expectedFirstLine: "# 11 Overview", label: "Overview" },
+    { filePath: "pages/note.md", line: 387, expectedFirstLine: "# 13 Details",  label: "Details", kind: "embed" }
+  ]
+}
+```
+
+It generates a UUID and an `id::` patch for every target that lacks one, resolves the destination indentation from real child blocks in that file (tabs stay tabs), writes the leading space for you, and returns every patch plus the exact reference lines. You apply them with your editing tool and run `#blockCheck` once. `position: "sibling"` appends the references next to the destination block instead of inside it.
 
 ### 4.2 Inline rendering
 
@@ -213,9 +248,18 @@ Two differences are unavoidable: the count sits at the end of the line rather th
 
 ### 4.7 Commands
 
-All ten commands live under "Block Reference:" in the command palette: expand current note, expand reference at cursor, expand block by UUID, show backlinks for reference at cursor, show backlinks for block, open backlinks panel, copy reference to current block, copy embed to current block, insert soft line break inside the block, rebuild index, select Tine graph directory, show log.
+All twelve commands live under "Block Reference:" in the command palette: expand current note, expand reference at cursor, expand block by UUID, show backlinks for reference at cursor, show backlinks for block, open backlinks panel, copy reference to current block, copy embed to current block, insert soft line break inside the block, enter (create a sibling block), rebuild index, select Tine graph directory, show log.
 
 "Copy reference / embed to current block" behaves like Tine's *Copy block reference*: if the block has no `id::`, one is inserted, the note is saved, and `((uuid))` or `{{embed ((uuid))}}` is placed on the clipboard.
+
+The two key commands are bound to shortcuts inside Tine notes only:
+
+| Key | Command | Effect |
+|---|---|---|
+| `Enter` | Enter (Create a Sibling Block) | Splits the block; on an empty block it keeps producing empty blocks; in plain body text it inserts `- ` so the new line is an outline block |
+| `Shift+Enter` | Insert Soft Line Break Inside the Block | Line break inside the same block, preserving indentation |
+
+Both are scoped with `editorTextFocus && editorLangId == markdown`, so **pressing Enter in the Copilot chat box, the search box or any other input no longer writes into your note**. When the conditions are not met (not a Tine note, frontmatter, page properties, tables, an active selection, or the suggestion widget open) they fall back to VS Code's native behaviour.
 
 "Rebuild index" and "Select Tine graph directory" are fallbacks, not daily steps.
 
@@ -245,9 +289,13 @@ The AI tools and all read paths are **read-only**: they never modify, reformat, 
 
 There is exactly one write path, and you trigger it yourself: **Block Reference: Copy Reference / Copy Embed to Current Block**. When the target block has no `id::`, that command inserts a single `id::` line and saves the document before copying. No other command and no AI tool writes to your vault.
 
+`#blockMakeRef` and `#blockLink` deliberately **return patches instead of writing them**. Copilot's accept/reject bar only covers the AI's own editing tool — anything a tool writes privately never shows up there, so you could not reject it and would have to fall back to Ctrl+Z or `git diff`. Keeping the write in the editing tool is what makes "reject" work.
+
 ### 5.5 Known limitations
 
 Only `pages/` and `journals/` are indexed. Backlink badge position and panel placement differ from Tine for the reasons above. Badges depend on `editor.inlayHints.enabled`. The expanded view has no Ctrl+F (use the webview's own find). With several vaults open only one is indexed. Dangling references and duplicate IDs are reported explicitly rather than silently.
+
+References glued to preceding text (`参考：((uuid))`) parse in this extension but do not render in Tine / Logseq. `#blockCheck` reports them as `reference-tight-prefix`; the fix is one space.
 
 In `replace` inline-rendering mode the original UUID is compressed to zero width, so the cursor cannot reach the right side of a reference. Use the default `activeLine` mode (or `append`) if you edit references often.
 
@@ -326,13 +374,30 @@ Tine 与 Logseq 均提供反链面板，VS Code 原生不具备。本插件的�
 - 行内渲染会将**整个表达式**替换为目标块标题，包括 `{{embed ...}}` 外层包裹，不会残留 `{{embed 标题}}` 之类的畸形结果。
 - 悬停时，鼠标位于 `{{embed` 前缀、UUID 主体或结尾 `}}` 上均可触发预览。
 
+### 引用前面必须有空白
+
+这是 Tine / Logseq 的原生规则：只有「行首」或「空白之后」的 `((uuid))` 与 `{{embed` 才会被识别成引用。
+
+| 写法 | 本扩展 | Tine / Logseq |
+|---|---|---|
+| `- 参考 ((uuid))` | ✅ | ✅ |
+| `- ((uuid))`（行首） | ✅ | ✅ |
+| `- 参考：((uuid))`（紧贴全角冒号） | ⚠️ 能解析，看着正常 | ❌ 不渲染，退化成普通文本 |
+| `- 参考：{{embed ((uuid))}}` | ⚠️ 能解析 | ❌ 不渲染 |
+
+这是最容易漏掉的一类坏引用：在 VS Code 里一切正常，粘回 Tine 才发现是死链。因此：
+
+- `#blockCheck` 把它报为 `reference-tight-prefix` 警告；
+- `#blockLink` 在生成引用行时由代码保证空格，不依赖模型手写。
+
 ## 1.4 功能一览
 
 | 功能 | 说明 |
 |---|---|
 | 索引 | 后台扫描 `pages/` 与 `journals/`，建立 UUID → 块、UUID → 引用的内存索引。打开笔记库即自动建立并持续维护，无需手动操作 |
-| AI 工具（7 个） | 读取块 / 整篇笔记 / 反链，生成新块 ID、查找块、准备引用补丁、校验引用 |
-| 生成块引用 | AI 用 `#blockNewId`、`#blockFind`、`#blockMakeRef`、`#blockCheck` 写出合法的 `id::` 与 `((uuid))`；人工可通过右键菜单「复制当前块的引用 / 嵌入引用」一步完成 |
+| AI 工具（8 个） | 读取块 / 整篇笔记 / 反链，生成新块 ID、查找块与大纲、一次链接多个块、准备引用补丁、校验引用 |
+| 生成块引用 | AI 用 `#blockNewId`、`#blockFind`、`#blockLink`、`#blockMakeRef`、`#blockCheck` 写出合法的 `id::` 与 `((uuid))`；人工可通过右键菜单「复制当前块的引用 / 嵌入引用」一步完成 |
+| 一次链接多个块 | `#blockLink` 自动补 `id::`、算好缩进层级、保证引用前的空格，把「查找 → 补 ID → 写引用」压成一次调用加一次校验 |
 | 行内渲染 | 将 `((uuid))` 直接显示为目标块标题；光标所在行显示真实 UUID，可自由定位、选中与编辑 |
 | 回车与块内换行 | 回车拆出同级块（空块继续产生空块），Shift+Enter 在块内软换行，与 Tine / Logseq 一致 |
 | 悬停预览 | 鼠标悬停在引用上时显示目标块及其全部子块 |
@@ -449,9 +514,9 @@ applyTo: '**'
 
 **这一步最容易被忽略。** 指令文件放在**你的笔记库**里，不在扩展目录里，扩展升级不会自动更新它。
 
-从 0.4.x 升级到 0.5.0 及以上时，旧指令文件只讲「怎么读块引用」，没有「怎么生成块引用」的规则。若不替换，AI 仍然不会调用 `#blockNewId` / `#blockFind` / `#blockMakeRef` / `#blockCheck`，表现为「装了新版本但 AI 还是不会写块引用」。
+从 0.4.x 升级到 0.5.0 及以上时，旧指令文件只讲「怎么读块引用」，没有「怎么生成块引用」的规则。若不替换，AI 仍然不会调用 `#blockNewId` / `#blockFind` / `#blockLink` / `#blockMakeRef` / `#blockCheck`，表现为「装了新版本但 AI 还是不会写块引用」。
 
-判断当前文件是否为新版：用文本编辑器打开，看是否有 `## 五、写笔记时如何生成块引用` 这一节。没有就说明是旧版，按上面「文件来源」重新下载覆盖即可。
+判断当前文件是否为新版：用文本编辑器打开，看是否有 `## 五、写笔记时如何生成块引用` 这一节。0.5.2 起还应包含 `## 六、最短路径：不要自己加验证`。缺任何一节都说明是旧版，按上面「文件来源」重新下载覆盖即可。
 
 覆盖前注意：如果你曾在旧文件里加过自己的规则，请先把那些规则摘出来，覆盖后重新补进去。
 
@@ -463,9 +528,11 @@ applyTo: '**'
 4. `#blockNote` 在引用数量较多时应先以 `mode: "list"` 获取清单，再用 `#blockRef` 逐个读取，避免一次性展开数十处导致输出超出上限被截断。
 5. 工具返回「未找到」时，应如实告知用户，不得编造内容。
 6. 新建需要被引用的块时，必须用 `#blockNewId` 拿 UUID，不得自己编造。
-7. 给已有块补 `id::` 时用 `#blockFind` 定位、`#blockMakeRef` 拿补丁，按 `oldText`/`newText` 原样应用。
-8. 写完 `id::` 或 `((uuid))` 后必须调用 `#blockCheck` 校验。
-9. 区分「块内软换行」（缩进续行，不加 `- `）与「子块」（`- ` + 更深缩进），不要把同块多行写成多个块。
+7. **引用已有块时优先用 `#blockLink`**：一次调用就能拿到「补 `id::`」与「写引用」的全部补丁。只有只想补 ID、不写落点时，才用 `#blockMakeRef`。
+8. 找「某篇笔记的第 N 个标题」这类位置时，用 `#blockFind` + `headingsOnly` + `headingLevel`，**不要用终端扫文件**。
+9. 写完 `id::` 或 `((uuid))` 后必须调用 `#blockCheck` 校验，整篇只跑一次。
+10. 区分「块内软换行」（缩进续行，不加 `- `）与「子块」（`- ` + 更深缩进），不要把同块多行写成多个块。
+11. **`((` 与 `{{embed` 前面必须是行首或空格**。紧贴文字或中文标点的写法在 VS Code 里看着正常，但 Tine / Logseq 不会渲染。
 
 ---
 
@@ -558,15 +625,19 @@ code --list-extensions --show-versions | Select-String block-reference
 | `#blockNote` | 读取整篇笔记并展开其中的块引用 |
 | `#blockBacklinks` | 查询引用该块的位置 |
 | `#blockNewId` | 生成新的 Tine / Logseq 块 ID（UUID v4），返回 `id::` 行与引用文本 |
-| `#blockFind` | 按标题或正文搜索块，返回文件、行号、面包屑与 UUID |
+| `#blockFind` | 按标题或正文搜索块；也可用 `filePath` + `headingsOnly` + `headingLevel` 一次列出整篇笔记的大纲 |
+| `#blockLink` | 一次调用把若干已有块引用进笔记：补缺失的 `id::`、算好引用块的位置与缩进，一次性给出全部补丁 |
 | `#blockMakeRef` | 为没有 `id::` 的块生成精确补丁（`oldText` / `newText` + unified diff） |
-| `#blockCheck` | 校验 `id::` 位置、悬空引用、重复 UUID、畸形引用等问题 |
+| `#blockCheck` | 校验 `id::` 位置、悬空引用、重复 UUID、畸形引用，以及引用前缺少空格 |
 
 ### 写笔记时的推荐顺序
 
 1. 新建块并需要被引用：`#blockNewId` → 写入 `id::`；
-2. 引用已有块：`#blockFind` → 有 ID 直接引用，没有 ID 用 `#blockMakeRef` 拿补丁；
-3. 写完：`#blockCheck` 校验，有错误先修。
+2. **引用已有块（默认）**：`#blockFind` 定位（找结构用 `headingsOnly`）→ `#blockLink` 一次拿到全部补丁 → 应用补丁；
+3. 只想补 ID、不写落点时，才用 `#blockMakeRef` 拿单个补丁；
+4. 写完：`#blockCheck` 一次，有错误先修。
+
+一次「引用 2 个块」的标准任务在 **4 次调用内**结束。`#blockLink` 会同时解决三件容易出错的事：补 `id::`、算出引用块的缩进层级、保证 `((uuid))` 前面有空格。
 
 ### `#blockNote` 的三种模式
 
@@ -587,6 +658,39 @@ code --list-extensions --show-versions | Select-String block-reference
 ```
 #blockRef 3f7a1c2e-5b9d-4a11-8c3e-1d2f4b6a8c01
 ```
+
+### 列举笔记结构（找「第 N 个标题」）
+
+要引用「某篇笔记的第 2 个二级标题」这类位置，**不要让 AI 用终端扫文件**。一次调用：
+
+```
+#blockFind { filePath: "pages/傲娇.md", headingsOnly: true, headingLevel: 2, limit: 200 }
+```
+
+返回按文件顺序编号、每条一行的清单，1–6 级标题都能查：
+
+```
+1. pages/傲娇.md:5    # 11 行为模式概括   no id
+2. pages/傲娇.md:53   # 12 收到情感表达   id: 68010957-…
+```
+
+`headingLevel` 省略时返回全部层级；`query` 留空表示不按关键词过滤（此时必须给 `filePath`，否则会退化成「把全库块都倒出来」）。`limit` 上限为 200。
+
+### 一次链接多个块
+
+```
+#blockLink {
+  destination: { filePath: "pages/我的笔记.md", line: 6, expectedFirstLine: "引用区" },
+  targets: [
+    { filePath: "pages/傲娇.md", line: 5,   expectedFirstLine: "# 11 行为模式概括", label: "行为模式" },
+    { filePath: "pages/傲娇.md", line: 387, expectedFirstLine: "# 13 产生情感需求", label: "情感需求", kind: "embed" }
+  ]
+}
+```
+
+它会：给每个没有 `id::` 的目标生成 UUID 与插入补丁；按目标文件里**真实的子块缩进**决定引用行的缩进（Tab 保持 Tab）；在引用前自动补空格；一次性返回全部补丁与最终会写入的引用行。
+
+你只需用编辑工具原样应用，再跑一次 `#blockCheck`。`position: "sibling"` 可把引用写成落点块的同级块而不是子块。
 
 ## 4.2 行内渲染
 
@@ -633,6 +737,10 @@ code --list-extensions --show-versions | Select-String block-reference
 | 两者在 frontmatter / 页面属性 / 表格 / 有选区时 | 不接管，保持 VS Code 原生行为 |
 
 图谱外的普通 Markdown 完全不受影响。把 `tineBlockRef.enterSplitBlock` 设为 `false` 可整体关闭回车接管。
+
+**只在你真正编辑文档时才生效。** 这两个键由 `editorTextFocus && editorLangId == markdown` 限定作用域，因此在 Copilot 聊天输入框、搜索框或任何其他输入控件里按回车，**不会**再往笔记里写空块。
+
+> 0.5.1 及更早版本拦截的是全局 `type` 命令，而 `type` 不携带「哪个控件按的键」这一信息，`window.activeTextEditor` 又始终指向最后获得焦点的文本编辑器。结果是在聊天框里按回车，换行被写进了中间那份笔记（实测产生十几行空块）。0.5.2 改为独立命令 + 快捷键作用域后此问题消失。
 
 ## 4.3 悬停预览
 
@@ -907,7 +1015,8 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 | 块引用：打开反链面板 | 通读完整反链（亦可从行尾徽章的悬停框进入） |
 | 块引用：复制当前块的引用 | 像 Tine 的「复制块引用」：必要时补 `id::`、保存，再复制 `((uuid))` |
 | 块引用：复制当前块的嵌入引用 | 同上，复制 `{{embed ((uuid))}}` |
-| 块引用：在当前块内换行（软换行） | 等价于 Shift+Enter：块内换行，不产生新块 |
+| 块引用：回车（新建同级块） | 已绑定回车键：块内任意位置拆出同级块，块外插入 `- ` |
+| 块引用：在当前块内换行（软换行） | 已绑定 Shift+Enter：块内换行，不产生新块 |
 | 块引用：重建索引 | 兜底手段。日常无需使用，索引会自动维护 |
 | 块引用：选择 Tine 图谱目录 | 自动探测失败时，或需要在多个笔记库间切换 |
 | 块引用：显示日志 | 排查问题 |
@@ -1011,6 +1120,8 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 
 只有一条写入路径，而且由你主动触发：**「块引用：复制当前块的引用 / 嵌入引用」**。当目标块没有 `id::` 时，该命令会插入一行 `id::` 并保存文档，然后复制引用。除此之外，任何命令与 AI 工具都不会写入笔记库。
 
+`#blockMakeRef` 与 `#blockLink` 刻意**只返回补丁、不写文件**。原因是 Copilot 的「接受 / 拒绝」栏只覆盖 AI 自己的编辑工具：工具私自写盘不会出现在那里，你既无法拒绝，事后也分不清哪次改动是 AI 做的，只能靠 Ctrl+Z 或 `git diff` 兜底。把落盘交给编辑工具，才是「点不接受就全撤」能成立的前提。
+
 ## 5.5 已知限制
 
 - 仅索引 `pages/` 与 `journals/`；`logseq/` 下的回收站与备份不参与索引。
@@ -1020,9 +1131,10 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 - 同时打开多个笔记库时仅索引其中一个（当前文件所属者优先，其次为第一个工作区文件夹）。需要切换时使用「块引用：选择 Tine 图谱目录」。
 - 悬空引用（目标块已被删除）会明确标注为「未找到」，不会静默失败。
 - 重复 ID（同一 UUID 出现在多个文件）会列出全部候选并提示歧义。
+- **紧贴前文的引用**（`参考：((uuid))`）本扩展能解析、在 VS Code 里显示正常，但 Tine / Logseq 不会把它渲染成引用。`#blockCheck` 会报 `reference-tight-prefix` 警告，修法是补一个空格。
 - Tine 自带的 `tine block show` 命令在 Windows 上不可用（报错 `cannot reach a graph's owner`），因此本插件自行实现解析，不依赖该 CLI。
 - 行内渲染在 `replace` 模式下会把原文 UUID 的字符宽度压缩为 0，光标无法到达引用右侧、也选不中引用。默认的 `activeLine` 模式已避开该问题；若仍需始终隐藏原文，可改用 `append`。
-- 回车 / Shift+Enter 的接管依赖注册全局 `type` 命令与 `Shift+Enter` 快捷键。若其他扩展也注册了这两项，后激活者生效。
+- 回车 / Shift+Enter 通过 `package.json` 里的快捷键绑定实现，作用域为 `editorTextFocus && editorLangId == markdown`。若其他扩展也绑定了同样的键与条件，后激活者生效。
 
 ## 5.6 配置参考
 
@@ -1114,6 +1226,10 @@ $stream.Dispose(); $zip.Dispose()
 > **关于行尾符**：CI 在 Linux 上检出代码，生成的压缩包内文件为 LF 行尾；
 > Windows 本地生成的为 CRLF。两者内容一致，功能无差异，因此无需强制统一。
 
+> **本地那份 zip 容易被遗忘**：`notebook-instructions.zip` 在 `.gitignore` 里，
+> 改完模板后本地这份不会自动更新。曾出现过模板已改、本地 zip 仍是两个版本前的情况，
+> 用户解压后拿到的是旧规则。手动分发给他人之前，先核对 zip 内文件的大小与模板是否一致。
+
 ## 发版流程
 
 版本号变更已全部自动化。发版只需三步：
@@ -1141,5 +1257,18 @@ owner、仓库名与工作流文件名（`release.yml`），三者须精确匹�
 | `tineBlockRef_readBlock` | `blockRef` |
 | `tineBlockRef_readNote` | `blockNote` |
 | `tineBlockRef_findBacklinks` | `blockBacklinks` |
+| `tineBlockRef_newId` | `blockNewId` |
+| `tineBlockRef_findBlocks` | `blockFind` |
+| `tineBlockRef_link` | `blockLink` |
+| `tineBlockRef_makeRef` | `blockMakeRef` |
+| `tineBlockRef_checkRefs` | `blockCheck` |
 
 **编写文档、指令或让 AI 引用时必须使用右列。** 左列仅出现在扩展源码中，模型完全不可见。
+
+## 为什么工具只返回补丁、不写文件
+
+`#blockMakeRef` 与 `#blockLink` 都只计算补丁，落盘由 AI 的编辑工具完成。这样做的原因不是保守，而是**唯一能让「不接受」按钮生效的方式**：
+
+Copilot 的接受/拒绝栏只覆盖 AI 自己的编辑工具所做的事。工具私自写盘的文件不会出现在那里——你既无法拒绝，事后也分不清哪次改动是 AI 干的，只能靠 Ctrl+Z 或 `git diff` 兜底。
+
+代价是多一次工具往返。考虑到一次「引用 2 个块」的完整任务在 4 次调用内结束，这个代价换来的是随时可撤销，值得。

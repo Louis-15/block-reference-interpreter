@@ -81,6 +81,9 @@ export class NewIdTool implements vscode.LanguageModelTool<NewIdInput> {
 			t(
 				'- If the new block first line is a code fence (for example `- ```js`), put id:: after the closing fence and before child blocks; Logseq may not recognize it there.',
 			),
+			t(
+				'- A reference only works at the start of a line or right after a space. When it follows text, put a space before `((` or `{{embed`; otherwise Tine / Logseq will not render it.',
+			),
 			t('- Do not make up UUIDs; always use the values returned by this tool.'),
 		);
 

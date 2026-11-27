@@ -17,6 +17,31 @@ export function buildInsertPatch(
 	insertAfterLine: number,
 	propertyLine: string,
 ): { oldText: string; newText: string } {
+	return buildInsertLinesPatch(lines, insertAfterLine, [propertyLine]);
+}
+
+/**
+ * 生成「插入多行」的补丁。
+ *
+ * 与单行版本的差别只有插入内容：插入多行时（例如一次追加几个引用块），
+ * 唯一性扩展与上下文拼接逻辑完全一致，因此共用同一份实现，
+ * 避免两个版本对不齐导致补丁匹配失败。
+ *
+ * @param lines 文件行（已剥离 `\r`）
+ * @param insertAfterLine 新行插在这一行之后（0-based）
+ * @param insertLines 要插入的行（不含换行）
+ */
+export function buildInsertLinesPatch(
+	lines: readonly string[],
+	insertAfterLine: number,
+	insertLines: readonly string[],
+): { oldText: string; newText: string } {
+	if (insertLines.length === 0) {
+		const unchanged = lines[insertAfterLine] ?? '';
+		return { oldText: unchanged, newText: unchanged };
+	}
+
+	const inserted = insertLines.join('\n');
 	const fullText = lines.join('\n');
 	let start = insertAfterLine;
 	let end = insertAfterLine;
@@ -41,8 +66,8 @@ export function buildInsertPatch(
 	const hasAfter = end > insertAfterLine;
 	const after = hasAfter ? lines.slice(insertAfterLine + 1, end + 1).join('\n') : '';
 	const newText = hasAfter
-		? `${before}\n${propertyLine}\n${after}`
-		: `${before}\n${propertyLine}`;
+		? `${before}\n${inserted}\n${after}`
+		: `${before}\n${inserted}`;
 
 	return { oldText, newText };
 }

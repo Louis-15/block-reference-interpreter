@@ -2,7 +2,7 @@
   "name": "block-reference-interpreter",
   "displayName": "%blockReferenceInterpreter.displayName%",
   "description": "%blockReferenceInterpreter.description%",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "publisher": "louis-15",
   "license": "MIT",
   "icon": "media/icon.png",

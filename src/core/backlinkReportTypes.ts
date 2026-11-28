@@ -53,6 +53,14 @@ export interface BacklinkItem {
 export interface BacklinkGroup {
 	/** 文件绝对路径。 */
 	path: string;
+	/**
+	 * 页面显示名。
+	 *
+	 * 有 `title::` 页面属性时用它的值（Tine 的页面名语义），否则退回文件名。
+	 * 由 `buildBacklinkReport` 填好，渲染层直接使用，不要在渲染层重新推导——
+	 * 否则「面板显示标题、悬停显示文件名」这种不一致会重新出现。
+	 */
+	pageName?: string;
 	/** 该文件内的引用条目。 */
 	items: BacklinkItem[];
 	/** 条目数（供 CodeLens 与排序使用）。 */

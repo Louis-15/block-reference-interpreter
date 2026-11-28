@@ -21,7 +21,9 @@
 
 import { buildBlockPath } from './blockPath';
 import type { BacklinkEntry, GraphIndex } from './graphIndex';
+import { getPageTitle } from './pageTitle';
 import { getBlockTitle, renderBlockTree, stripHeadingMarks } from './render';
+import { toPageName } from './backlinkReportText';
 import type {
 	BacklinkGroup,
 	BacklinkItem,
@@ -208,7 +210,17 @@ export function buildBacklinkReport(
 			continue;
 		}
 		const items = mergeHits(parsed, fileEntries, options).sort((a, b) => a.line - b.line);
-		groups.push({ path, items, count: items.length });
+		/*
+		 * 页面名优先用前言的 `title::`：Tine 里页面名就是它的值，不是文件名。
+		 * 在这里算一次并随组下发，渲染层（文本 / 面板 / HTML / 悬停）不必各算一遍，
+		 * 也就不会出现「一处显示标题、另一处显示文件名」。
+		 */
+		groups.push({
+			path,
+			pageName: getPageTitle(parsed) ?? toPageName(path),
+			items,
+			count: items.length,
+		});
 	}
 
 	groups.sort((a, b) => (b.count - a.count) || a.path.localeCompare(b.path));

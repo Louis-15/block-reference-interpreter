@@ -78,6 +78,55 @@ export function isSourceBlockLine(line: string): boolean {
 	return parseSourceBlockLine(line) !== null;
 }
 
+/**
+ * 顶格 ATX 标题行的正则（行首没有任何缩进）。
+ *
+ * Tine / Logseq 的解析器（lsdoc）把这种行当作**独立的块**，和 `- ` 列表块并列：
+ * 它可以被折叠、可以挂 `id::`、可以被 `((uuid))` 引用。典型写法是
+ *
+ * ```markdown
+ * # 1 大义、天理
+ * collapsed:: true
+ * id:: 66b1f836-...
+ * 	- 孟子：民为贵……
+ * ```
+ *
+ * 两个条件必须同时满足，放宽任何一个都会把普通正文误判成块：
+ * - `#` 紧贴行首：缩进的 `#` 在本插件里仍是普通续行；
+ * - `#` 后面是空白或直接行尾：`#标签` 是 tag，`#速记` 之类的写法不能被当成标题。
+ */
+const ATX_HEADING_REGEX = /^#{1,6}(?:[ \t]+|$)/;
+
+/** 判断一行是否为顶格 ATX 标题（`# 标题`，行首无缩进）。 */
+export function isAtxHeadingLine(line: string): boolean {
+	return ATX_HEADING_REGEX.test(line);
+}
+
+/**
+ * 按 LF 切分并剥离每行尾部 CR（兼容 CRLF 文件）。
+ *
+ * 放在本模块而不是解析器里：这是纯粹的「文本 → 行数组」操作，
+ * 与块树构建无关，解析器只是它的调用方。
+ */
+export function splitLines(content: string): string[] {
+	const lines = content.split('\n').map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line));
+
+	/**
+	 * 剥掉 UTF-8 BOM。
+	 *
+	 * BOM 是不可见字符，但它会让首行变成 `\uFEFF- xxx`，
+	 * 于是列表行正则匹配失败、**整个第一个块丢失**，
+	 * 表现为「文件里的块 ID 找不到」这种极难定位的问题。
+	 * 当前笔记库没有 BOM 文件，但用户随时可能从别处导入。
+	 */
+	const first = lines[0];
+	if (first !== undefined && first.charCodeAt(0) === 0xfeff) {
+		lines[0] = first.slice(1);
+	}
+
+	return lines;
+}
+
 /** 取一行行首空白的列数。 */
 export function lineIndentColumns(line: string, tabSize = 4): number {
 	const match = line.match(/^[ \t]*/);

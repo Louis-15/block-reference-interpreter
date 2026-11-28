@@ -28,7 +28,7 @@
   "tineBlockRef.maxDepth": "嵌套块引用（引用里再引用）的默认展开层数。0 表示不递归。",
   "tineBlockRef.maxOutputChars": "单次工具调用的输出字符预算，超出后截断并提示。",
   "tineBlockRef.hoverPreviewLines": "悬停预览显示的块内容行数。行数越少，整体高度越矮，底部的「展开全文/反向链接」按钮越不容易被滚动隐藏。",
-  "tineBlockRef.hideProperties": "渲染块内容时隐藏的属性名（不含 ::）。",
+  "tineBlockRef.hideProperties": "渲染块内容时隐藏的属性名（不含 ::）。默认与 Tine 的内置隐藏属性表一致（id、collapsed、heading、todo、created-at、logseq.*、SRS 卡片属性等），避免把元数据当成块的正文。",
   "tineBlockRef.inlineRender.enabled": "在编辑器里把 ((uuid)) 直接显示成目标块的首行文本（类似 Tine/Logseq 的原生效果）。关闭后显示原始 UUID。",
   "tineBlockRef.inlineRender.mode": "行内渲染的方式。activeLine 在光标所在行显示真实 ((uuid))、其他行显示目标块标题，是唯一能自由定位光标、选中并编辑引用的模式。",
   "tineBlockRef.inlineRender.maxTitleLength": "行内渲染时目标块标题的最大长度，超出会截断并加省略号，避免把行撑爆。",

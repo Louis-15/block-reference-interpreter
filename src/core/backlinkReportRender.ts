@@ -98,7 +98,8 @@ export function renderBacklinkReport(
 		}
 
 		const relative = toDisplayPath(group.path, options.graphRoot);
-		const pageName = toPageName(group.path);
+		// 优先用报告里算好的页面名（`title::` 优先，其次文件名）。
+		const pageName = group.pageName ?? toPageName(group.path);
 		lines.push(
 			t('## {0}', pageName),
 			'',
@@ -248,7 +249,7 @@ export function renderBacklinkPanel(
 		}
 
 		const relative = toDisplayPath(group.path, options.graphRoot);
-		push(`## ${toPageName(group.path)}`);
+		push(`## ${group.pageName ?? toPageName(group.path)}`);
 		push('');
 		push(t('`{0}` · {1} references', relative, group.count));
 		push('');

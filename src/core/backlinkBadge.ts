@@ -87,7 +87,7 @@ export function buildTooltipData(report: BacklinkReport, maxItems = 8): Backlink
 		}
 
 		items.push({
-			pageName: toPageName(group.path),
+			pageName: group.pageName ?? toPageName(group.path),
 			path: group.path,
 			line: first.line,
 			blockPath: first.blockPath,

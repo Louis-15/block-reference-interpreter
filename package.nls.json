@@ -28,7 +28,7 @@
   "tineBlockRef.maxDepth": "Default depth for expanding nested block references (a reference inside another referenced block). 0 disables recursion.",
   "tineBlockRef.maxOutputChars": "Output character budget for a single tool call. Content beyond it is truncated with a notice.",
   "tineBlockRef.hoverPreviewLines": "Number of block content lines shown in the hover preview. Fewer lines keep the popup short, so the Expand and Backlinks buttons at the bottom stay visible.",
-  "tineBlockRef.hideProperties": "Property names to hide when rendering block content (without the trailing ::).",
+  "tineBlockRef.hideProperties": "Property names to hide when rendering block content (without the trailing ::). The default matches Tine's built-in hidden list (id, collapsed, heading, todo, created-at, logseq.*, SRS card properties and more), so metadata is never mistaken for block text.",
   "tineBlockRef.inlineRender.enabled": "Show ((uuid)) inline as the target block's first line, similar to native Tine / Logseq rendering. When disabled, the raw UUID is shown.",
   "tineBlockRef.inlineRender.mode": "How block references are shown inline in the editor. `activeLine` shows the real ((uuid)) on the line your cursor is on and the target title everywhere else; it is the only mode where you can freely place the cursor, select, and edit references.",
   "tineBlockRef.inlineRender.maxTitleLength": "Maximum length of the target block title in inline rendering. Longer titles are truncated with an ellipsis so the line does not grow unbounded.",

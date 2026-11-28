@@ -95,6 +95,42 @@ describe('renderBlockTree', () => {
 		// 恢复默认隐藏集合之外的属性不再隐藏 id（因为覆盖了列表）
 		expect(text).toContain('id::');
 	});
+
+	it('默认隐藏与 Tine 对齐的内置属性', () => {
+		// 这些键在 Tine 的 BUILTIN_HIDDEN 里，属于元数据而不是块的正文。
+		// 若漏隐藏，AI 会把它们当成块里真的写着这些字符串。
+		const content = [
+			'- 块标题',
+			'  heading:: true',
+			'  todo:: NOW',
+			'  created-at:: 2026-01-01',
+			'  logseq.order-list-type:: number',
+			'  logseq.macro-name:: hi',
+		].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		const text = renderBlockTree(parsed, 0);
+		expect(text).toBe('块标题');
+	});
+
+	it('下划线拼写的内置属性同样被隐藏', () => {
+		// Logseq 历史数据里有 `created_at::` 这类写法，
+		// Tine 的 normalize 会把 `_` 换成 `-` 再比对。
+		//
+		// 注意键名中间的空格（`Created At::`）不在此列：Tine 与本插件的属性行正则
+		// 都要求键名不含空白，这种写法根本不算属性，会作为正文保留。
+		const content = ['- 块', '  created_at:: 2026-01-01', '  last_modified_at:: 2026-01-02'].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		expect(renderBlockTree(parsed, 0)).toBe('块');
+	});
+
+	it('业务属性仍然保留，不被内置清单误伤', () => {
+		// `tags` / `tine.author` 不在 Tine 的 BUILTIN_HIDDEN 里，带业务语义。
+		const content = ['- 块', '  tags:: 谍战', '  tine.author:: 张三'].join('\n');
+		const parsed = parseMarkdown('x.md', content);
+		const text = renderBlockTree(parsed, 0);
+		expect(text).toContain('tags:: 谍战');
+		expect(text).toContain('tine.author:: 张三');
+	});
 });
 
 describe('stripHeadingMarks', () => {

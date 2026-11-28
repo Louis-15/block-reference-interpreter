@@ -11,14 +11,25 @@
  */
 
 import {
+	isAtxHeadingLine,
 	isBlankLine,
 	lineIndentColumns,
 	measureIndentColumns,
 	parseSourceBlockLine,
+	splitLines,
 } from './blockLine';
 import { getOpeningFenceState, isClosingFence, type MarkdownFenceState } from './fence';
+import { skipPreamble } from './preamble';
 import { scanReferences } from './refScanner';
 import type { BlockNode, ParsedFile } from './types';
+
+/**
+ * `splitLines` 从这里继续对外导出。
+ *
+ * 它已经移到 `blockLine.ts`（那里才是「文本 → 行数组」这类行级操作的家），
+ * 但调用方与测试一直从 `blockParser` 导入，保持这条路径可用。
+ */
+export { splitLines } from './blockLine';
 
 /**
  * 块 ID 属性行。
@@ -32,13 +43,6 @@ import type { BlockNode, ParsedFile } from './types';
  */
 const BLOCK_ID_REGEX =
 	/^\s*id::\s*([a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})\s*$/i;
-
-/**
- * 页面属性行（文件开头、非列表、形如 `key:: value`）。
- *
- * `[^-\s]` 排除了列表行与水平线，避免把 `- xxx` 误判成属性。
- */
-const PAGE_PROPERTY_REGEX = /^\s*[^-\s].*?::\s*.*$/;
 
 /**
  * 块属性行（`collapsed::`、`tine.author::` 等）。
@@ -71,26 +75,6 @@ export interface ParseOptions {
 	tabSize?: number;
 }
 
-/** 按 LF 切分并剥离每行尾部 CR（兼容 CRLF 文件）。 */
-export function splitLines(content: string): string[] {
-	const lines = content.split('\n').map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line));
-
-	/**
-	 * 剥掉 UTF-8 BOM。
-	 *
-	 * BOM 是不可见字符，但它会让首行变成 `\uFEFF- xxx`，
-	 * 于是列表行正则匹配失败、**整个第一个块丢失**，
-	 * 表现为「文件里的块 ID 找不到」这种极难定位的问题。
-	 * 当前笔记库没有 BOM 文件，但用户随时可能从别处导入。
-	 */
-	const first = lines[0];
-	if (first !== undefined && first.charCodeAt(0) === 0xfeff) {
-		lines[0] = first.slice(1);
-	}
-
-	return lines;
-}
-
 /**
  * 解析一个 Markdown 文件。
  *
@@ -107,37 +91,11 @@ export function parseMarkdown(path: string, content: string, options: ParseOptio
 	const blockAtStartLine = new Map<number, number>();
 	/** 每个块自身内容的最后一行（不含子块），收尾时用于算 endLine。 */
 	const ownEndLines: number[] = [];
-	const pageProperties: string[] = [];
 
-	let lineNumber = 0;
-
-	// ---------- 第一阶段：跳过 frontmatter ----------
-	if (lines.length > 0 && (lines[0] ?? '').trim() === '---') {
-		lineNumber = 1;
-		while (lineNumber < lines.length) {
-			const trimmed = (lines[lineNumber] ?? '').trim();
-			lineNumber++;
-			if (trimmed === '---' || trimmed === '...') {
-				break;
-			}
-		}
-	}
-
-	// ---------- 第二阶段：跳过文件开头的页面属性 ----------
-	// 这些行属于「页面」而不是某个块，收集起来供来源展示使用。
-	while (lineNumber < lines.length) {
-		const line = lines[lineNumber] ?? '';
-		if (isBlankLine(line)) {
-			lineNumber++;
-			continue;
-		}
-		if (PAGE_PROPERTY_REGEX.test(line)) {
-			pageProperties.push(line);
-			lineNumber++;
-			continue;
-		}
-		break;
-	}
+	// ---------- 第一阶段：跳过前言区（frontmatter + 页面属性）----------
+	// 这些行属于「页面」而不是某个块，收集起来供来源展示与页面名读取使用。
+	const { startLine, pageProperties } = skipPreamble(lines);
+	let lineNumber = startLine;
 
 	// ---------- 第三阶段：逐行构建块树 ----------
 	let fence: MarkdownFenceState | null = null;
@@ -161,6 +119,32 @@ export function parseMarkdown(path: string, content: string, options: ParseOptio
 		}
 		block.ownLines.push(line);
 		ownEndLines[blockIndex] = atLine;
+	};
+
+	/**
+	 * 创建一个根级块（没有 `- ` 列表标记的块），并把它设为当前块。
+	 *
+	 * 两种形态共用这段逻辑，差别只在调用方要不要先清空栈：
+	 * - 文件开头尚未进入任何块时的顶格内容（隐式块，保留实际缩进）；
+	 * - 任意位置的顶格 `# 标题`（Tine / lsdoc 的 heading 块，缩进恒为 0）。
+	 *
+	 * 抽成一个函数是为了让「块长什么样」只有一处定义——三处各写一遍时，
+	 * 只要有一处漏了 `blockAtStartLine`，悬停与跳转就会在这个块上失效。
+	 */
+	const pushRootBlock = (line: string, atLine: number, indent: number): void => {
+		const index = blocks.length;
+		blocks.push({
+			startLine: atLine,
+			endLine: atLine,
+			indent,
+			ownLines: [line],
+			parent: -1,
+			children: [],
+		});
+		ownEndLines.push(atLine);
+		stack.push(index);
+		blockAtStartLine.set(atLine, index);
+		pendingBlanks = [];
 	};
 
 	for (; lineNumber < lines.length; lineNumber++) {
@@ -237,28 +221,12 @@ export function parseMarkdown(path: string, content: string, options: ParseOptio
 			 *
 			 * 这类块没有任何列表标记，若直接跳过，它的 `id::` 会丢失，
 			 * 所有引用它的地方都变成悬空引用（该 UUID 在真实库中被引用 13 次）。
-			 *
-			 * 只在「栈为空」时创建，所以影响范围仅限文件开头，
-			 * 不会把正文中间的段落误判成块。
 			 */
 			if (isBlankLine(line)) {
 				continue;
 			}
 
-			const implicitIndent = lineIndentColumns(line, tabSize);
-			const implicitIndex = blocks.length;
-			blocks.push({
-				startLine: lineNumber,
-				endLine: lineNumber,
-				indent: implicitIndent,
-				ownLines: [line],
-				parent: -1,
-				children: [],
-			});
-			ownEndLines.push(lineNumber);
-			stack.push(implicitIndex);
-			blockAtStartLine.set(lineNumber, implicitIndex);
-			pendingBlanks = [];
+			pushRootBlock(line, lineNumber, lineIndentColumns(line, tabSize));
 			continue;
 		}
 
@@ -268,6 +236,24 @@ export function parseMarkdown(path: string, content: string, options: ParseOptio
 		}
 
 		const indent = lineIndentColumns(line, tabSize);
+
+		/**
+		 * 顶格 `# 标题`：Tine / Logseq 把它当作独立块（lsdoc 的 heading），
+		 * 和 `- ` 列表块并列，可以挂 `id::`、可以被引用。
+		 *
+		 * 它结束此前所有还开着的块，成为新的根级块——这正是「缩进更浅就关掉子块」
+		 * 的层级语义，只是顶格标题的「更浅」等于零。
+		 *
+		 * 必须放在 `indent <= top.indent` 判定之前：顶格标题的缩进恒为 0，
+		 * 若先走那条分支，它会被当成「缩进不够的杂行」直接丢弃，
+		 * 于是后一个标题下的子块会错误地并入前一个标题的子树，
+		 * `id::` 也会挂到错误的块上。
+		 */
+		if (indent === 0 && isAtxHeadingLine(line)) {
+			stack.length = 0;
+			pushRootBlock(line, lineNumber, 0);
+			continue;
+		}
 
 		/**
 		 * 块 ID 归属。

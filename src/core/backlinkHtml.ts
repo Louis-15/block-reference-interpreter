@@ -342,7 +342,7 @@ export function renderBacklinkHtml(
 	for (const group of report.groups) {
 		const displayPath = toDisplayPath(group.path, options.graphRoot);
 		bodyParts.push('<section class="page">');
-		bodyParts.push(`<h2>${escapeHtml(toPageName(group.path))}</h2>`);
+		bodyParts.push(`<h2>${escapeHtml(group.pageName ?? toPageName(group.path))}</h2>`);
 		bodyParts.push(
 			`<div class="meta"><code>${escapeHtml(displayPath)}</code> · ${escapeHtml(t('{0} references', group.count))}</div>`,
 		);

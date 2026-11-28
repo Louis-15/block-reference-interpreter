@@ -237,3 +237,57 @@ describe('buildBacklinkReport', () => {
 		expect(report.definitions).toHaveLength(0);
 	});
 });
+
+describe('页面名（title::）', () => {
+	const UUID_REF = '6780f110-d8e8-489f-be72-d2b3dbbc5668';
+
+	/** 用一份最小图跑报告，返回引用方页面的 pageName。 */
+	async function pageNameOf(referrerContent: string, referrerPath = 'pages/引用方.md') {
+		const graph = new GraphIndex();
+		const files: Record<string, string> = {
+			'pages/目标.md': TARGET_NOTE,
+			[referrerPath]: referrerContent,
+		};
+		await graph.rebuild(Object.keys(files), (filePath) => Promise.resolve(files[filePath] ?? ''));
+		const report = buildBacklinkReport(graph, UUID_REF);
+		return report.groups.find((group) => group.path === referrerPath)?.pageName;
+	}
+
+	it('有 title:: 时页面名取标题值，而不是文件名', async () => {
+		// 与 Tine 一致：页面名是 `title::` 的值，文件名只是存储位置。
+		const pageName = await pageNameOf(
+			['title:: 真正的页面名', `- 引用 ((${UUID_REF}))`].join('\n'),
+		);
+		expect(pageName).toBe('真正的页面名');
+	});
+
+	it('没有 title:: 时退回文件名', async () => {
+		const pageName = await pageNameOf(`- 引用 ((${UUID_REF}))`, 'pages/文件名.md');
+		expect(pageName).toBe('文件名');
+	});
+
+	it('空的 title:: 视为没有标题', async () => {
+		const pageName = await pageNameOf(
+			['title::', `- 引用 ((${UUID_REF}))`].join('\n'),
+			'pages/文件名.md',
+		);
+		expect(pageName).toBe('文件名');
+	});
+
+	it('块内部的 title:: 属于那个块，不是页面名', async () => {
+		// 只有第一个块之前的页面属性才算页面名，否则任何写着 title:: 的普通块
+		// 都会把整篇笔记改名为它的属性值。
+		const pageName = await pageNameOf(
+			['- 第一个块', '  title:: 块自己的属性', `- 引用 ((${UUID_REF}))`].join('\n'),
+			'pages/文件名.md',
+		);
+		expect(pageName).toBe('文件名');
+	});
+
+	it('title:: 大小写不敏感', async () => {
+		const pageName = await pageNameOf(
+			['Title:: 大写键', `- 引用 ((${UUID_REF}))`].join('\n'),
+		);
+		expect(pageName).toBe('大写键');
+	});
+});

@@ -195,13 +195,42 @@ Webview，代价是失去 Ctrl+F 与自由复制。
 `refAuditScan.ts` 与 `render.ts` 里的属性正则必须与 `blockParser.ts` 保持一致，
 否则会出现「解析器不认为是属性，渲染层却把该行隐藏了」的不一致。
 
+**隐藏哪些属性只在 `hiddenProperties.ts` 维护一份。** 清单与 Tine 的
+`BUILTIN_HIDDEN`（`crates/tine-outline/src/property_visibility.rs`）对齐，共 30 多项。
+两处容易踩：`package.json` 的 `tineBlockRef.hideProperties` 默认值要跟着改，
+否则「没配置」和「显式配置成旧默认」结果不同；键名比对要先过
+`normalizePropertyKey`（小写 + `_`/空格→`-`），否则 `created_at::` 会漏隐藏。
+
+**顶格 `# 标题` 是块，缩进的不是。** Tine / lsdoc 把行首无缩进的 `# 标题`
+当作和 `- ` 并列的独立块，可以挂 `id::`、可以被引用。本插件原先只在文件开头
+识别它，文件中部出现的第二个顶格标题会被丢弃，导致后一个标题下的子块并进
+前一个标题的子树、`id::` 挂到错误的块——这是**同 UUID 在两边指向不同块**的隐患。
+判定条件必须同时满足「行首无缩进」与「`#` 后是空白或行尾」：放宽前者会把
+续行误判成块，放宽后者会把 `#标签` 当成标题。
+
+**lsdoc 还会把缩进的 `# 标题` 当成 heading 块。** 本插件把它当父块续行，
+两者不一致。真实笔记库中该写法为 0 例，所以暂不对齐；若将来出现，
+先统计「这些行下面有没有 `id::`」再决定，别直接照搬 lsdoc 的行为。
+
+**页面名优先 `title::`，其次文件名。** Tine 的规则是取**前言区**第一个非空
+`title::`（`page_title_from_preamble`）。前言区由 `preamble.ts` 界定，止于第一个块，
+所以块内部的 `title::` 属于那个块、不是页面名。页面名由 `buildBacklinkReport`
+一次算好塞进 `BacklinkGroup.pageName`，四个渲染层直接读——不要在渲染层各自推导，
+否则「面板显示标题、悬停显示文件名」会重新出现。
+
 ## 体量
 
 `src/vscode/indexService.ts`（711 行）已超过 600 行红线；
-`src/core/backlinkHtml.ts`（452 行）超过 400 行警戒线，`src/core/blockParser.ts`（395 行）
-与 `src/vscode/inlineRenderer.ts`（394 行）就在线上。
+`src/core/backlinkHtml.ts`（452 行）超过 400 行警戒线，`src/vscode/inlineRenderer.ts`（394 行）
+就在线上。
 新功能另开文件；要往这几个文件里加逻辑时，先提出拆分方案再动手。
 拆分时同步拆对应的 `src/test/*.test.ts`，保持覆盖率不变。
+
+`src/core/blockParser.ts` 一度因新增「顶格标题是块」涨到 445 行，已按职责拆出
+`src/core/preamble.ts`（frontmatter + 页面属性 → 第一个块的位置）与
+`src/core/hiddenProperties.ts`（属性隐藏清单），并把「行形态识别」（`splitLines`、
+`isAtxHeadingLine`）归到 `src/core/blockLine.ts`，主文件回落到 381 行。
+`blockParser` 仍 re-export `splitLines`，老调用方不用改。
 
 `backlinkReport.ts` 曾经是 670 行，已按「类型 / 文本 / 渲染」拆成
 `backlinkReport.ts` + `backlinkReportTypes.ts` + `backlinkReportText.ts` +

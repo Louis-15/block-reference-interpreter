@@ -2,14 +2,19 @@
  * 块内容渲染：把块树转成「给 AI / 给人看」的纯文本。
  *
  * 渲染原则：
- * - 根块首行去掉 `- ` 列表标记，作为正文标题；
+ * - 根块首行去掉 `- ` 列表标记，作为正文标题；顶格 `# 标题` 块原样输出标题；
  * - 子块保留 `- ` 标记，只做相对缩进归一化，让层级一眼可见；
- * - 隐藏 `id::`、`collapsed::` 这类纯元数据/UI 状态，但保留其他属性
- *   （例如 `tine.author::`、`tags::` 可能带语义）；
+ * - 隐藏 `id::`、`collapsed::`、`heading::`、`logseq.*` 等纯元数据/UI 状态
+ *   （清单见 `hiddenProperties.ts`，与 Tine 的 `BUILTIN_HIDDEN` 对齐）；
  * - 制表符一律展开成空格，避免不同工具下显示错位。
  */
 
 import { measureIndentColumns, parseSourceBlockLine } from './blockLine';
+import {
+	DEFAULT_HIDDEN_PROPERTIES,
+	buildHiddenPropertySet,
+	normalizePropertyKey,
+} from './hiddenProperties';
 import type { ParsedFile } from './types';
 
 /** 渲染选项。 */
@@ -28,8 +33,6 @@ export interface RenderOptions {
 	stripHeadingMarks?: boolean;
 }
 
-const DEFAULT_HIDDEN_PROPERTIES = ['id', 'collapsed'];
-
 /**
  * 属性行匹配：`key:: value`。
  *
@@ -44,7 +47,7 @@ function isHiddenPropertyLine(line: string, hidden: ReadonlySet<string>): boolea
 	if (!match || !match[1]) {
 		return false;
 	}
-	return hidden.has(match[1].toLowerCase());
+	return hidden.has(normalizePropertyKey(match[1]));
 }
 
 /**
@@ -67,13 +70,19 @@ function normalizeContinuation(line: string, baseIndentColumns: number, tabSize:
 	return ' '.repeat(columns - baseIndentColumns) + rest;
 }
 
-/** 取块首行的正文（去掉 `- ` 标记与首尾空白）。 */
+/**
+ * 取块首行的正文（去掉 `- ` 标记与首尾空白）。
+ *
+ * 块首行有两种合法形态，都要能取到标题：
+ * - `- 标题` 列表块：去掉 `- ` 标记；
+ * - `# 标题` 顶格 ATX 标题块：没有列表标记，原样返回（`#` 由调用方按需剥掉）。
+ */
 export function getBlockTitle(blockLine: string): string {
 	const info = parseSourceBlockLine(blockLine);
 	if (info) {
 		return info.content.trim();
 	}
-	// 理论上不会走到这里（块首行一定是列表行），保底返回去掉前导空白的原文。
+	// 顶格 `# 标题` 或理论上不会出现的其他形态：去掉前导空白即可。
 	return blockLine.trim();
 }
 
@@ -154,9 +163,7 @@ function emitBlock(
  * @returns 多行文本；块不存在时返回空字符串
  */
 export function renderBlockTree(parsed: ParsedFile, blockIndex: number, options: RenderOptions = {}): string {
-	const hidden = new Set(
-		(options.hideProperties ?? DEFAULT_HIDDEN_PROPERTIES).map((name) => name.toLowerCase()),
-	);
+	const hidden = buildHiddenPropertySet(options.hideProperties ?? DEFAULT_HIDDEN_PROPERTIES);
 	const resolved: ResolvedRenderOptions = {
 		includeChildren: options.includeChildren ?? true,
 		compact: options.compact ?? false,

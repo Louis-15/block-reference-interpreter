@@ -837,6 +837,7 @@ Tine 与 Logseq 均提供该功能，VS Code 原生不具备。本插件的反�
 | 悬停查看引用页面 | 支持 | 支持，每行附带面包屑 |
 | 按页面分组列出全部引用 | 支持 | 支持，按引用条目数降序 |
 | 显示引用所在小节 | `3 性能优化 › 3.2 索引策略` | 相同的面包屑路径 |
+| 页面名 | 优先 `title::`，其次文件名 | 相同 |
 | 完整展示引用块及其子块 | 支持 | 子树全展开，层级缩进还原 |
 | 折叠 / 展开子块 | 小三角 | `▾` / `▸` 三角 + 全部折叠按钮 |
 | 单击标题跳转到引用处 | 支持 | 左键单击直接跳转，无需 Ctrl |
@@ -1131,6 +1132,8 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 - 同时打开多个笔记库时仅索引其中一个（当前文件所属者优先，其次为第一个工作区文件夹）。需要切换时使用「块引用：选择 Tine 图谱目录」。
 - 悬空引用（目标块已被删除）会明确标注为「未找到」，不会静默失败。
 - 重复 ID（同一 UUID 出现在多个文件）会列出全部候选并提示歧义。
+- **页面名优先取前言的 `title::`**，没有时退回文件名，与 Tine 一致。块内部的 `title::` 属于那个块，不会被当成页面名。
+- **顶格 `# 标题`（行首无缩进）会被当作独立块**，和 `- ` 列表块并列：可以挂 `id::`、可以被引用。文件开头、文件中部都支持。缩进的 `# 标题` 仍按父块的续行处理（Tine 的解析器会把这种情况也当成独立 heading，但真实笔记库中未出现该写法）。
 - **紧贴前文的引用**（`参考：((uuid))`）本扩展能解析、在 VS Code 里显示正常，但 Tine / Logseq 不会把它渲染成引用。`#blockCheck` 会报 `reference-tight-prefix` 警告，修法是补一个空格。
 - Tine 自带的 `tine block show` 命令在 Windows 上不可用（报错 `cannot reach a graph's owner`），因此本插件自行实现解析，不依赖该 CLI。
 - 行内渲染在 `replace` 模式下会把原文 UUID 的字符宽度压缩为 0，光标无法到达引用右侧、也选不中引用。默认的 `activeLine` 模式已避开该问题；若仍需始终隐藏原文，可改用 `append`。
@@ -1146,7 +1149,7 @@ AI 会调用 `#blockBacklinks`，获得与面板**完全相同**的分组、排�
 | `tineBlockRef.exclude` | `logseq/**`, `.tine-trash/**` 等 | 排除的路径 |
 | `tineBlockRef.maxDepth` | `3` | 嵌套引用展开层数 |
 | `tineBlockRef.maxOutputChars` | `20000` | 单次输出字符预算 |
-| `tineBlockRef.hideProperties` | `id`, `collapsed` | 渲染时隐藏的属性 |
+| `tineBlockRef.hideProperties` | 与 Tine 内置隐藏表一致（`id`, `collapsed`, `heading`, `todo`, `created-at`, `logseq.*`, SRS 卡片属性等） | 渲染时隐藏的属性。默认值刻意与 Tine 的 `BUILTIN_HIDDEN` 对齐，避免把元数据当成块正文读给 AI |
 | `tineBlockRef.inlineRender.enabled` | `true` | 是否将 `((uuid))` 显示为块标题 |
 | `tineBlockRef.inlineRender.mode` | `activeLine` | `activeLine` 光标行显示原文 / `replace` 始终隐藏原文 / `append` 追加标题 |
 | `tineBlockRef.enterSplitBlock` | `true` | 回车拆块、Shift+Enter 块内换行（仅 Tine 图谱内生效） |

@@ -15,6 +15,7 @@ import * as vscode from 'vscode';
 import { GraphIndex } from '../core/graphIndex';
 import { matchSimpleGlob } from '../core/globMatch';
 import { detectGraphRoot, nodePathProbe } from '../core/graphLocator';
+import { DEFAULT_HIDDEN_PROPERTIES } from '../core/hiddenProperties';
 import type { IndexStats } from '../core/types';
 import { t } from '../core/i18n';
 
@@ -44,7 +45,7 @@ export function readConfig() {
 		maxDepth: config.get<number>('maxDepth', 3),
 		maxOutputChars: config.get<number>('maxOutputChars', 20000),
 		hoverPreviewLines: config.get<number>('hoverPreviewLines', 6),
-		hideProperties: config.get<string[]>('hideProperties', ['id', 'collapsed']),
+		hideProperties: config.get<string[]>('hideProperties', [...DEFAULT_HIDDEN_PROPERTIES]),
 		inlineRenderEnabled: config.get<boolean>('inlineRender.enabled', true),
 		inlineRenderMode: config.get<string>('inlineRender.mode', 'activeLine'),
 		enterSplitBlock: config.get<boolean>('enterSplitBlock', true),
